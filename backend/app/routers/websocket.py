@@ -48,7 +48,7 @@ async def interview_websocket(websocket: WebSocket, interview_id: str):
 
                     elif msg_type == "tts_request":
                         text = data.get("text", "")
-                        voice = data.get("voice", "zhitian")
+                        voice = data.get("voice", "zh-CN-XiaoxiaoNeural")
                         audio_data = await synthesize_speech(text, voice)
                         await websocket.send_bytes(audio_data)
 

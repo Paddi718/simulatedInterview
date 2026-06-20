@@ -6,16 +6,17 @@ import Link from 'next/link';
 import { api } from '@/lib/api';
 
 const VOICES = [
-  { id: 'zhitian', name: '知甜', gender: 'female' },
-  { id: 'zhijing', name: '知婧', gender: 'female' },
-  { id: 'zhixia', name: '知夏', gender: 'female' },
-  { id: 'zhiyun', name: '知云', gender: 'male' },
+  { id: 'zh-CN-XiaoxiaoNeural', name: '晓晓', gender: 'female', style: '活泼' },
+  { id: 'zh-CN-XiaoyiNeural', name: '晓伊', gender: 'female', style: '温柔' },
+  { id: 'zh-CN-YunyangNeural', name: '云扬', gender: 'male', style: '专业' },
+  { id: 'zh-CN-YunjianNeural', name: '云健', gender: 'male', style: '运动' },
+  { id: 'zh-CN-YunxiNeural', name: '云希', gender: 'male', style: '叙述' },
 ];
 
 export default function SettingsPage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
-  const [voice, setVoice] = useState('zhitian');
+  const [voice, setVoice] = useState('zh-CN-XiaoxiaoNeural');
   const [speed, setSpeed] = useState(1.0);
   const [saved, setSaved] = useState(false);
 
@@ -67,7 +68,7 @@ export default function SettingsPage() {
                 <label className="block text-sm font-medium mb-2">AI 面试官音色</label>
                 <select value={voice} onChange={(e) => setVoice(e.target.value)} className="w-full px-3 py-2 border rounded-lg">
                   {VOICES.map((v) => (
-                    <option key={v.id} value={v.id}>{v.name} ({v.gender === 'female' ? '女' : '男'})</option>
+                    <option key={v.id} value={v.id}>{v.name} ({v.gender === 'female' ? '女' : '男'} · {v.style})</option>
                   ))}
                 </select>
               </div>

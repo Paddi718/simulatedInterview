@@ -23,7 +23,7 @@
 | 数据库 | PostgreSQL 15 |
 | 缓存 | Redis 7 |
 | AI | DeepSeek / Claude API (出题 + 评分) |
-| 语音 | 阿里云 ASR + TTS |
+| 语音 | 阿里云 ASR + 微软 Edge TTS（免费） |
 | 部署 | Docker Compose |
 
 ## 🚀 快速开始

@@ -19,9 +19,7 @@ class Settings(BaseSettings):
     aliyun_asr_access_key_id: str = ""
     aliyun_asr_access_key_secret: str = ""
 
-    # TTS
-    tts_api_key: str = ""
-    tts_api_secret: str = ""
+    # TTS (Edge TTS — free, no API key required)
 
     # LLM
     llm_api_key: str = ""
