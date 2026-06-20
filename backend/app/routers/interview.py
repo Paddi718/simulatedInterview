@@ -16,6 +16,28 @@ from app.services.interview_engine import InterviewEngine
 router = APIRouter(prefix="/api/interview", tags=["interview"])
 
 
+@router.get("/list")
+async def list_interviews(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Interview).where(Interview.user_id == current_user.id)
+        .order_by(Interview.created_at.desc())
+    )
+    interviews = result.scalars().all()
+    return [
+        {
+            "id": str(i.id),
+            "status": i.status,
+            "difficulty": i.difficulty,
+            "total_score": i.total_score,
+            "created_at": i.created_at.isoformat(),
+        }
+        for i in interviews
+    ]
+
+
 @router.post("/create", response_model=InterviewResponse, status_code=201)
 async def create_interview(
     data: CreateInterviewRequest,
