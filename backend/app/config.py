@@ -1,0 +1,43 @@
+from pydantic_settings import BaseSettings
+from functools import lru_cache
+
+
+class Settings(BaseSettings):
+    # Database
+    database_url: str = "postgresql+asyncpg://interview_user:password@localhost:5432/interview_db"
+
+    # Redis
+    redis_url: str = "redis://localhost:6379/0"
+
+    # JWT
+    jwt_secret: str = "dev-secret-change-in-production"
+    jwt_algorithm: str = "HS256"
+    jwt_expire_days: int = 7
+
+    # AliCloud ASR
+    aliyun_asr_app_key: str = ""
+    aliyun_asr_access_key_id: str = ""
+    aliyun_asr_access_key_secret: str = ""
+
+    # TTS
+    tts_api_key: str = ""
+    tts_api_secret: str = ""
+
+    # LLM
+    llm_api_key: str = ""
+    llm_api_base: str = "https://api.deepseek.com"
+    llm_model: str = "deepseek-chat"
+
+    # Storage
+    audio_storage_path: str = "/var/data/interview-app/audio"
+    document_storage_path: str = "/var/data/interview-app/documents"
+    resume_storage_path: str = "/var/data/interview-app/resumes"
+
+    class Config:
+        env_file = ".env"
+        extra = "ignore"
+
+
+@lru_cache()
+def get_settings() -> Settings:
+    return Settings()
