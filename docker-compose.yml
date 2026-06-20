@@ -45,10 +45,8 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
       JWT_SECRET: ${JWT_SECRET}
-      ALIYUN_ASR_APP_KEY: ${ALIYUN_ASR_APP_KEY}
-      ALIYUN_ASR_ACCESS_KEY_ID: ${ALIYUN_ASR_ACCESS_KEY_ID}
-      ALIYUN_ASR_ACCESS_KEY_SECRET: ${ALIYUN_ASR_ACCESS_KEY_SECRET}
-LLM_API_KEY: ${LLM_API_KEY}
+      ASR_MODEL_DIR: ${ASR_MODEL_DIR:-models/SenseVoiceSmall}
+      LLM_API_KEY: ${LLM_API_KEY}
       LLM_API_BASE: ${LLM_API_BASE}
       LLM_MODEL: ${LLM_MODEL}
       AUDIO_STORAGE_PATH: ${AUDIO_STORAGE_PATH}
@@ -56,6 +54,7 @@ LLM_API_KEY: ${LLM_API_KEY}
       RESUME_STORAGE_PATH: ${RESUME_STORAGE_PATH}
     volumes:
       - app_data:/var/data/interview-app
+      - ./models:/app/models
     depends_on:
       postgres:
         condition: service_healthy

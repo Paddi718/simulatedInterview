@@ -23,7 +23,7 @@
 | 数据库 | PostgreSQL 15 |
 | 缓存 | Redis 7 |
 | AI | DeepSeek / Claude API (出题 + 评分) |
-| 语音 | 阿里云 ASR + 微软 Edge TTS（免费） |
+| 语音 | FunASR 本地识别（免费）+ 微软 Edge TTS（免费） |
 | 部署 | Docker Compose |
 
 ## 🚀 快速开始
@@ -56,12 +56,18 @@ docker compose exec backend alembic upgrade head
 ### 本地开发
 
 ```bash
-# 后端
+# 1. 下载 ASR 模型（SenseVoiceSmall，约 900MB）
+mkdir -p models
+# 从 ModelScope 下载：
+# https://www.modelscope.cn/models/iic/SenseVoiceSmall
+# 或将已有模型目录链接到 backend/models/SenseVoiceSmall
+
+# 2. 后端
 cd backend
 pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 
-# 前端
+# 3. 前端
 cd frontend
 npm install
 npm run dev

@@ -14,10 +14,8 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_days: int = 7
 
-    # AliCloud ASR
-    aliyun_asr_app_key: str = ""
-    aliyun_asr_access_key_id: str = ""
-    aliyun_asr_access_key_secret: str = ""
+    # FunASR (本地语音识别 — 免费，无需 API Key)
+    asr_model_dir: str = "models/SenseVoiceSmall"
 
     # TTS (Edge TTS — free, no API key required)
 

@@ -19,3 +19,6 @@ python-docx==1.1.0
 python-magic==0.4.27
 pydantic==2.5.3
 edge-tts==6.1.9
+funasr>=1.0.0
+torch>=2.0.0
+torchaudio>=2.0.0
