@@ -26,6 +26,8 @@ export default function PreparePage() {
   const [jdText, setJdText] = useState('');
   const [difficulty, setDifficulty] = useState('mid');
   const [loading, setLoading] = useState(false);
+  const [uploadingResume, setUploadingResume] = useState(false);
+  const [creatingJd, setCreatingJd] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -55,25 +57,29 @@ export default function PreparePage() {
     if (!file) return;
     const formData = new FormData();
     formData.append('file', file);
+    setUploadingResume(true);
     try {
       await api.upload('/api/resume/upload', formData);
       loadData();
     } catch (err: any) {
       setError(err.message);
+    } finally {
+      setUploadingResume(false);
     }
   };
 
   const handleCreateJd = async () => {
     if (!jdText.trim()) return;
-    setLoading(true);
+    setCreatingJd(true);
     try {
       await api.post('/api/jd/create', { raw_text: jdText });
       setJdText('');
       loadData();
     } catch (err: any) {
       setError(err.message);
+    } finally {
+      setCreatingJd(false);
     }
-    setLoading(false);
   };
 
   const handleStart = async () => {
@@ -134,10 +140,19 @@ export default function PreparePage() {
             ))}
           </div>
           <div className="border-2 border-dashed rounded-lg p-6 text-center">
-            <input type="file" accept=".pdf,.docx,.txt" onChange={handleUploadResume} className="hidden" id="resume-upload" />
-            <label htmlFor="resume-upload" className="cursor-pointer text-blue-600 hover:underline">
-              + 上传新简历
-            </label>
+            {uploadingResume ? (
+              <div className="flex items-center justify-center gap-2 text-blue-600">
+                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600" />
+                <span>上传解析中...</span>
+              </div>
+            ) : (
+              <>
+                <input type="file" accept=".pdf,.docx,.txt" onChange={handleUploadResume} className="hidden" id="resume-upload" />
+                <label htmlFor="resume-upload" className="cursor-pointer text-blue-600 hover:underline">
+                  + 上传新简历
+                </label>
+              </>
+            )}
           </div>
           <button onClick={() => setStep(2)} disabled={!selectedResume} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
             下一步
