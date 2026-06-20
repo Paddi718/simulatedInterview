@@ -133,6 +133,23 @@ async def complete_interview(
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Interview not found")
     interview = await InterviewEngine.complete_interview(db, interview_id)
+    # 触发评分
+    try:
+        from app.services.scoring_service import run_full_scoring
+        interview = await run_full_scoring(db, interview_id)
+    except Exception:
+        pass  # 评分失败不阻断流程
+    return _interview_to_response(interview)
+
+
+@router.post("/{interview_id}/rescore", response_model=InterviewResponse)
+async def rescore_interview(
+    interview_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.services.scoring_service import run_full_scoring
+    interview = await run_full_scoring(db, interview_id)
     return _interview_to_response(interview)
 
 
