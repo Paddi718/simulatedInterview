@@ -7,6 +7,7 @@ from app.routers import resume as resume_router
 from app.routers import jd as jd_router
 from app.routers import interview as interview_router
 from app.routers import websocket as ws_router
+from app.routers import document as doc_router
 
 
 @asynccontextmanager
@@ -34,6 +35,7 @@ app.include_router(resume_router.router)
 app.include_router(jd_router.router)
 app.include_router(interview_router.router)
 app.include_router(ws_router.router)
+app.include_router(doc_router.router)
 
 
 @app.get("/api/health")
