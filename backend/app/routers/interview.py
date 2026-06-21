@@ -81,6 +81,49 @@ async def delete_interview(
     return {"code": 0, "message": "ok"}
 
 
+@router.post("/{interview_id}/retry", status_code=201)
+async def retry_interview(
+    interview_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """基于已有面试创建新模拟（题目相同，答案清空）"""
+    result = await db.execute(
+        select(Interview).where(
+            Interview.id == interview_id, Interview.user_id == current_user.id
+        ).options(selectinload(Interview.questions))
+    )
+    original = result.scalar_one_or_none()
+    if not original:
+        raise HTTPException(status_code=404, detail="Interview not found")
+
+    # 创建新面试记录（复用简历、JD、难度）
+    new_interview = Interview(
+        user_id=current_user.id,
+        resume_id=original.resume_id,
+        jd_id=original.jd_id,
+        difficulty=original.difficulty,
+        status="preparing",
+    )
+    db.add(new_interview)
+    await db.flush()
+
+    # 复制题目（内容相同，答案相关字段清空）
+    for q in sorted(original.questions, key=lambda x: x.order_index):
+        new_q = InterviewQuestion(
+            interview_id=new_interview.id,
+            question_text=q.question_text,
+            question_type=q.question_type,
+            order_index=q.order_index,
+        )
+        db.add(new_q)
+
+    await db.commit()
+    await db.refresh(new_interview)
+
+    return {"code": 0, "data": {"id": str(new_interview.id)}, "message": "ok"}
+
+
 @router.post("/create", response_model=InterviewResponse, status_code=201)
 async def create_interview(
     data: CreateInterviewRequest,

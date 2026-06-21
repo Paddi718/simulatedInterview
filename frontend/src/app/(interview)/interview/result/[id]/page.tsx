@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import {
   ChevronLeft, Loader2, Award, AlertCircle, Sparkles,
   Clock, FileText, BookOpen, Target,
-  Zap, Brain, Star, BarChart3
+  Zap, Brain, Star, BarChart3, RefreshCw
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import ScoreRadar from '@/components/interview/ScoreRadar';
@@ -192,6 +192,21 @@ export default function ResultPage() {
             className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-800 transition-all"
           >
             <ChevronLeft className="w-4 h-4" />
+            返回
+          </button>
+          <button
+            onClick={async () => {
+              try {
+                const res = await api.post<{ id: string }>(`/api/interview/${result.id}/retry`);
+                router.push(`/interview/session?id=${res.id}`);
+              } catch (err: any) {
+                alert('重新模拟失败：' + (err.message || '未知错误'));
+              }
+            }}
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-brand-500 bg-brand-50 dark:bg-brand-950/30 border border-brand-200 dark:border-brand-800 rounded-xl hover:bg-brand-100 dark:hover:bg-brand-900/40 transition-all"
+          >
+            <RefreshCw className="w-4 h-4" />
+            重新模拟
             返回
           </button>
         </div>

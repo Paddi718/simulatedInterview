@@ -13,7 +13,7 @@ import {
   DialogClose,
 } from '@/components/ui/Dialog';
 import { Button } from '@/components/ui/Button';
-import { ClipboardList, Trash2, ChevronRight, Clock, RotateCw } from 'lucide-react';
+import { ClipboardList, Trash2, ChevronRight, Clock, RotateCw, RefreshCw } from 'lucide-react';
 
 interface InterviewRecord {
   id: string;
@@ -110,6 +110,7 @@ export default function HistoryPage() {
   const [records, setRecords] = useState<InterviewRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [filter, setFilter] = useState<DifficultyFilter>('all');
 
@@ -144,6 +145,19 @@ export default function HistoryPage() {
       alert('删除失败：' + (err.message || '未知错误'));
     } finally {
       setDeleting(null);
+    }
+  };
+
+  const handleRetry = async (e: React.MouseEvent, id: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setRetrying(id);
+    try {
+      const res = await api.post<{ id: string }>(`/api/interview/${id}/retry`);
+      router.push(`/interview/session?id=${res.id}`);
+    } catch (err: any) {
+      alert('重新模拟失败：' + (err.message || '未知错误'));
+      setRetrying(null);
     }
   };
 
@@ -298,6 +312,20 @@ export default function HistoryPage() {
                     </div>
                   </div>
                 </Link>
+
+                {/* Retry button */}
+                <button
+                  onClick={(e) => handleRetry(e, r.id)}
+                  disabled={retrying === r.id}
+                  className="absolute top-3 right-12 w-8 h-8 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-400 hover:text-brand-500 hover:border-brand-200 dark:hover:border-brand-800 hover:bg-brand-50 dark:hover:bg-brand-900/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 disabled:opacity-50 shadow-sm"
+                  title="重新模拟"
+                >
+                  {retrying === r.id ? (
+                    <div className="w-3.5 h-3.5 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-4 h-4" />
+                  )}
+                </button>
 
                 {/* Delete button */}
                 <button
