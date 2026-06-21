@@ -79,6 +79,7 @@ function SessionContent() {
   const [hasSpeechAPI, setHasSpeechAPI] = useState(true);
 
   const timerRef = useRef<NodeJS.Timeout|null>(null);
+  const timerValueRef = useRef(0);  // 计时器实时值，避免闭包陈旧
   const wsRef = useRef<WebSocket|null>(null);
   const mediaRecorderRef = useRef<MediaRecorder|null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -123,21 +124,19 @@ function SessionContent() {
   },[interviewId]);
 
   const speak=useCallback((text:string)=>{
-    const trySend=()=>{
-      if(wsRef.current?.readyState===WebSocket.OPEN){
-        wsRef.current.send(JSON.stringify({type:'tts_request',text,voice:localStorage.getItem('tts_voice')||'zh-CN-XiaoxiaoNeural'}));
+    const send=()=>{
+      const ws=wsRef.current;
+      if(ws?.readyState===WebSocket.OPEN){
+        ws.send(JSON.stringify({type:'tts_request',text,voice:localStorage.getItem('tts_voice')||'zh-CN-XiaoxiaoNeural'}));
         return true;
       }
       return false;
     };
-    if(!trySend()){
-      // WebSocket 断开，重连后发送
-      connectWs();
-      let attempts=0;
-      const retry=setInterval(()=>{
-        if(trySend()||++attempts>10){clearInterval(retry);}
-      },500);
-    }
+    if(send())return;
+    // 重连并延迟重试
+    connectWs();
+    setTimeout(()=>send(),1000);
+    setTimeout(()=>send(),2500);
   },[connectWs]);
 
   /* ---------- Load ---------- */
@@ -173,7 +172,7 @@ function SessionContent() {
 
   /* ---------- Recording ---------- */
   const startRecording=useCallback(async()=>{
-    setTranscript('');setLiveText('');liveTextRef.current='';setTimer(0);setRecordedTime(0);
+    setTranscript('');setLiveText('');liveTextRef.current='';setTimer(0);setRecordedTime(0);timerValueRef.current=0;
     chunksRef.current=[];connectWs();
     const SR=createSR();if(!SR)setHasSpeechAPI(false);
     try{
@@ -184,14 +183,14 @@ function SessionContent() {
       rec.ondataavailable=(e)=>{if(e.data.size>0)chunksRef.current.push(e.data);};
       rec.onstop=()=>{if(speechRef.current){try{speechRef.current.stop();}catch{}}stream.getTracks().forEach(t=>t.stop());processAudio();};
       rec.start();mediaRecorderRef.current=rec;
-      timerRef.current=setInterval(()=>setTimer(t=>t+1),1000);
+      timerRef.current=setInterval(()=>{const v=timerValueRef.current+1;timerValueRef.current=v;setTimer(v);},1000);
       setPhase('recording');
-    }catch{setPhase('recording');timerRef.current=setInterval(()=>setTimer(t=>t+1),1000);}
+    }catch{setPhase('recording');timerRef.current=setInterval(()=>{const v=timerValueRef.current+1;timerValueRef.current=v;setTimer(v);},1000);}
   },[connectWs]);
 
   const processAudio=async()=>{
     if(timerRef.current){clearInterval(timerRef.current);timerRef.current=null;}
-    const time=timer;setRecordedTime(time);
+    const time=timerValueRef.current;setRecordedTime(time);timerValueRef.current=0;
     // 先用浏览器实时识别结果，立即进入 review
     const browserText=liveTextRef.current;
     setTranscript(browserText);
@@ -289,7 +288,7 @@ function SessionContent() {
           <div className="px-5 sm:px-7 pt-4 pb-6">
             <div className="flex items-start justify-between gap-3">
               <h2 className="text-lg sm:text-xl font-semibold text-gray-900 leading-relaxed flex-1">{currentQ.question_text}</h2>
-              {phase==='question'&&(<button onClick={()=>speak(currentQ.question_text)} disabled={ttsPlaying||!wsConnected} className="flex-shrink-0 w-9 h-9 rounded-full bg-blue-50 hover:bg-blue-100 flex items-center justify-center disabled:opacity-40" title="朗读题目"><svg className={`w-5 h-5 text-blue-600 ${ttsPlaying?'animate-pulse':''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/></svg></button>)}
+              {phase==='question'&&(<button onClick={()=>speak(currentQ.question_text)} disabled={ttsPlaying} className="flex-shrink-0 w-9 h-9 rounded-full bg-blue-50 hover:bg-blue-100 flex items-center justify-center disabled:opacity-40" title="朗读题目"><svg className={`w-5 h-5 text-blue-600 ${ttsPlaying?'animate-pulse':''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/></svg></button>)}
             </div>
           </div>
           <div className="border-t border-gray-100"/>
