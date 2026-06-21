@@ -138,7 +138,8 @@ async def submit_answer(
 ):
     question = await InterviewEngine.submit_answer(
         db,
-        uuid.UUID(data.question_id),
+        interview_id,
+        data.order_index,
         data.answer_transcript,
         duration=data.duration_seconds,
     )

@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { api } from '@/lib/api';
 
 /* ---------- Types ---------- */
@@ -32,6 +33,11 @@ const QUESTION_TYPE_COLORS: Record<string, string> = {
   career: 'bg-emerald-50 text-emerald-700 border-emerald-200',
 };
 
+function getWsUrl(): string {
+  const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+  return apiBase.replace(/^http/, 'ws');
+}
+
 /* ========== SessionContent ========== */
 
 function SessionContent() {
@@ -46,20 +52,72 @@ function SessionContent() {
   const [error, setError] = useState('');
   const [timer, setTimer] = useState(0);
   const [transcript, setTranscript] = useState('');
+  const [asrPartial, setAsrPartial] = useState('');  // partial results during recording
   const [submitState, setSubmitState] = useState<SubmitState>('idle');
   const [showConfirm, setShowConfirm] = useState(false);
   const [completing, setCompleting] = useState(false);
+  const [asrStatus, setAsrStatus] = useState<'idle' | 'processing' | 'done'>('idle');
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const wsRef = useRef<WebSocket | null>(null);
+  const transcriptRef = useRef('');
+  const asrDoneRef = useRef<(() => void) | null>(null);  // resolve ASR completion
 
-  /* ---------- Cleanup timer on unmount ---------- */
+  /* ---------- Cleanup ---------- */
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
     };
   }, []);
+
+  /* ---------- WebSocket connection ---------- */
+  const connectWs = useCallback(() => {
+    if (!interviewId) return null;
+    const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
+    if (!token) return null;
+
+    const ws = new WebSocket(`${getWsUrl()}/api/ws/interview/${interviewId}?token=${token}`);
+    ws.binaryType = 'arraybuffer';
+
+    ws.onmessage = (event) => {
+      if (event.data instanceof ArrayBuffer) return;
+
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'asr_result') {
+          if (msg.final) {
+            transcriptRef.current = msg.text;
+            setTranscript(msg.text);
+            setAsrStatus('done');
+            setAsrPartial('');
+            if (asrDoneRef.current) {
+              asrDoneRef.current();
+              asrDoneRef.current = null;
+            }
+          } else {
+            setAsrStatus('processing');
+            setAsrPartial(msg.text);
+          }
+        } else if (msg.type === 'error') {
+          console.warn('[WS] Error:', msg.message);
+        }
+      } catch {
+        // ignore malformed messages
+      }
+    };
+
+    ws.onerror = (e) => {
+      console.warn('[WS] Connection error:', e);
+    };
+
+    return ws;
+  }, [interviewId]);
 
   /* ---------- Load interview ---------- */
   const loadInterview = useCallback(async () => {
@@ -91,33 +149,80 @@ function SessionContent() {
 
   /* ---------- Recording ---------- */
   const startRecording = useCallback(async () => {
+    transcriptRef.current = '';
+    asrDoneRef.current = null;
     setTranscript('');
+    setAsrPartial('');
     setSubmitState('idle');
     setTimer(0);
+    setAsrStatus('idle');
     chunksRef.current = [];
+
+    // Connect WebSocket if not already connected
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      wsRef.current = connectWs();
+    }
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : 'audio/webm';
+      const recorder = new MediaRecorder(stream, { mimeType });
 
       recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
+        if (e.data.size > 0) {
+          chunksRef.current.push(e.data);
+          // Send chunk to backend via WebSocket for real-time ASR
+          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+            e.data.arrayBuffer().then((buf) => {
+              if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                wsRef.current.send(buf);
+              }
+            }).catch(() => {});
+          }
+        }
       };
 
-      recorder.onstop = () => {
+      recorder.onstop = async () => {
         stream.getTracks().forEach((t) => t.stop());
-        // In production, send chunksRef.current to a speech-to-text API.
-        // For now we simulate a transcript.
-        const fakeTranscript =
-          '（语音识别转写结果：' +
-          (questions[currentIndex]?.question_text?.slice(0, 30) ?? '') +
-          '…）';
-        setTranscript(fakeTranscript);
+
+        setAsrStatus('processing');
+        // Signal to backend that audio is complete
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: 'audio_stop' }));
+        }
+
+        // Wait for ASR result (with timeout) via Promise
+        const asrPromise = new Promise<void>((resolve) => {
+          asrDoneRef.current = resolve;
+        });
+        const timeoutPromise = new Promise<void>((resolve) => {
+          setTimeout(() => {
+            if (asrDoneRef.current) {
+              asrDoneRef.current = null;
+            }
+            resolve();
+          }, 15000);
+        });
+        await Promise.race([asrPromise, timeoutPromise]);
+
+        // If still no ASR result and we have no audio, show placeholder
+        if (!transcriptRef.current && chunksRef.current.length === 0) {
+          transcriptRef.current = '（未检测到语音输入）';
+          setTranscript('（未检测到语音输入）');
+        }
+
         setPhase('review');
       };
 
-      recorder.start();
+      recorder.start(1500); // timeslice: 1.5s chunks
       mediaRecorderRef.current = recorder;
+
+      // Signal start to WebSocket
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: 'audio_start' }));
+      }
 
       setIsRecording(true);
       setPhase('recording');
@@ -129,7 +234,7 @@ function SessionContent() {
       timerRef.current = setInterval(() => setTimer((t) => t + 1), 1000);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentIndex, questions]);
+  }, [connectWs]);
 
   const stopRecording = useCallback(() => {
     setIsRecording(false);
@@ -141,19 +246,14 @@ function SessionContent() {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
     } else {
-      // Fallback: simulate transcript
-      const fakeTranscript =
-        '（语音识别转写结果：' +
-        (questions[currentIndex]?.question_text?.slice(0, 30) ?? '') +
-        '…）';
-      setTranscript(fakeTranscript);
+      // No active recorder — just go to review
+      if (chunksRef.current.length === 0) {
+        setTranscript('（未检测到语音输入）');
+      }
       setPhase('review');
     }
-  }, [currentIndex, questions]);
+  }, []);
 
-  /* We need isRecording as a separate flag because phase changes
-     from 'recording' to 'review' happen asynchronously (on recorder.onstop).
-     So we use a plain state to gate the UI during the actual recording. */
   const [isRecording, setIsRecording] = useState(false);
 
   /* ---------- Submit answer ---------- */
@@ -166,7 +266,7 @@ function SessionContent() {
       setSubmitState('submitting');
       try {
         await api.post(`/api/interview/${interviewId}/submit-answer`, {
-          question_id: q.order_index,
+          order_index: q.order_index,
           answer_transcript: answerText,
           duration_seconds: skip ? 0 : timer,
         });
@@ -181,6 +281,7 @@ function SessionContent() {
         setCurrentIndex((i) => i + 1);
         setPhase('question');
         setTranscript('');
+        setAsrPartial('');
         setTimer(0);
         setSubmitState('idle');
       } else {
@@ -195,7 +296,6 @@ function SessionContent() {
   const handleSkip = useCallback(() => {
     if (submitState === 'submitting') return;
     if (isRecording) {
-      // Stop recording first, then submit empty
       setIsRecording(false);
       if (timerRef.current) {
         clearInterval(timerRef.current);
@@ -204,8 +304,7 @@ function SessionContent() {
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         mediaRecorderRef.current.stop();
       }
-      // submit empty after a tiny delay so state settles
-      setTimeout(() => submitAnswer('', true), 100);
+      setTimeout(() => submitAnswer('', true), 200);
     } else {
       submitAnswer('', true);
     }
@@ -226,7 +325,7 @@ function SessionContent() {
 
   /* ---------- Progress helpers ---------- */
   const total = questions.length;
-  const progress = total > 0 ? ((currentIndex) / total) * 100 : 0;
+  const progress = total > 0 ? (currentIndex / total) * 100 : 0;
 
   const currentQ = questions[currentIndex];
 
@@ -255,12 +354,12 @@ function SessionContent() {
           <p className="text-gray-700 font-medium mb-1">出错了</p>
           <p className="text-sm text-gray-500 mb-6">{error}</p>
           <div className="flex gap-3 justify-center">
-            <button
-              onClick={() => router.push('/dashboard')}
+            <Link
+              href="/dashboard"
               className="px-5 py-2 text-sm text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
             >
               返回首页
-            </button>
+            </Link>
             <button
               onClick={loadInterview}
               className="px-5 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
@@ -280,12 +379,12 @@ function SessionContent() {
         <div className="bg-white rounded-2xl shadow-sm p-8 max-w-md w-full text-center">
           <p className="text-gray-700 font-medium mb-2">暂无面试题目</p>
           <p className="text-sm text-gray-500 mb-6">请联系管理员创建题目。</p>
-          <button
-            onClick={() => router.push('/dashboard')}
-            className="px-5 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+          <Link
+            href="/dashboard"
+            className="inline-block px-5 py-2 text-sm text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
           >
             返回首页
-          </button>
+          </Link>
         </div>
       </div>
     );
@@ -295,6 +394,20 @@ function SessionContent() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-gray-50">
       <div className="max-w-2xl mx-auto px-4 py-6 sm:py-10">
+        {/* ======== Top Bar with Back Button ======== */}
+        <div className="flex items-center justify-between mb-4">
+          <Link
+            href="/dashboard"
+            className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            返回首页
+          </Link>
+          <span className="text-xs text-gray-400">AI 模拟面试</span>
+        </div>
+
         {/* ======== Progress Bar ======== */}
         <div className="bg-white rounded-xl shadow-sm p-4 sm:p-5 mb-5">
           <div className="flex items-center justify-between mb-2">
@@ -391,7 +504,7 @@ function SessionContent() {
 
             {/* ----- Recording Phase ----- */}
             {isRecording && (
-              <div className="flex flex-col items-center gap-6">
+              <div className="flex flex-col items-center gap-4">
                 {/* Timer */}
                 <div className="text-center">
                   <div className="text-3xl sm:text-4xl font-mono font-bold text-gray-800 tabular-nums">
@@ -402,11 +515,9 @@ function SessionContent() {
 
                 {/* Recording mic with pulse */}
                 <div className="relative">
-                  {/* Pulse rings */}
                   <div className="absolute inset-0 rounded-full animate-ping bg-red-400/30" />
                   <div className="absolute inset-0 rounded-full animate-pulse bg-red-400/20" style={{ animationDelay: '0.5s' }} />
 
-                  {/* Mic button */}
                   <button
                     onClick={stopRecording}
                     className="relative w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-gradient-to-br from-red-500 to-red-600 shadow-lg shadow-red-200 hover:shadow-red-300 hover:from-red-600 hover:to-red-700 transition-all duration-200 flex items-center justify-center active:scale-95"
@@ -424,6 +535,14 @@ function SessionContent() {
 
                 <p className="text-sm font-medium text-red-500 animate-pulse">录音中...</p>
 
+                {/* Real-time partial transcript */}
+                {asrPartial && (
+                  <div className="w-full bg-gray-50 rounded-xl p-3 border border-gray-200 max-h-32 overflow-y-auto">
+                    <p className="text-xs text-gray-400 mb-1">实时转写：</p>
+                    <p className="text-sm text-gray-600 leading-relaxed">{asrPartial}</p>
+                  </div>
+                )}
+
                 {/* Skip while recording */}
                 <button
                   onClick={handleSkip}
@@ -438,6 +557,14 @@ function SessionContent() {
             {/* ----- Review Phase (transcript preview) ----- */}
             {phase === 'review' && !isRecording && (
               <div className="flex flex-col gap-5">
+                {/* ASR Processing indicator */}
+                {asrStatus === 'processing' && (
+                  <div className="flex items-center gap-2 text-sm text-blue-600">
+                    <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                    正在识别语音...
+                  </div>
+                )}
+
                 {/* Transcript */}
                 <div>
                   <label className="block text-sm font-medium text-gray-600 mb-2">你的回答</label>

@@ -83,13 +83,17 @@ class InterviewEngine:
     @staticmethod
     async def submit_answer(
         db: AsyncSession,
-        question_id: uuid.UUID,
+        interview_id: uuid.UUID,
+        order_index: int,
         transcript: str,
         audio_path: Optional[str] = None,
         duration: int = 0,
     ) -> InterviewQuestion:
         result = await db.execute(
-            select(InterviewQuestion).where(InterviewQuestion.id == question_id)
+            select(InterviewQuestion).where(
+                InterviewQuestion.interview_id == interview_id,
+                InterviewQuestion.order_index == order_index,
+            )
         )
         question = result.scalar_one_or_none()
         if not question:

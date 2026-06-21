@@ -30,6 +30,6 @@ class InterviewResponse(BaseModel):
 
 
 class SubmitAnswerRequest(BaseModel):
-    question_id: str
+    order_index: int
     answer_transcript: str = ""
     duration_seconds: int = 0
