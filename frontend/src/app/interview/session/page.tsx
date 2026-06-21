@@ -121,7 +121,23 @@ function SessionContent() {
     wsRef.current=ws;
   },[interviewId]);
 
-  const speak=(text:string)=>{if(wsRef.current?.readyState===WebSocket.OPEN)wsRef.current.send(JSON.stringify({type:'tts_request',text,voice:localStorage.getItem('tts_voice')||'zh-CN-XiaoxiaoNeural'}));};
+  const speak=useCallback((text:string)=>{
+    const trySend=()=>{
+      if(wsRef.current?.readyState===WebSocket.OPEN){
+        wsRef.current.send(JSON.stringify({type:'tts_request',text,voice:localStorage.getItem('tts_voice')||'zh-CN-XiaoxiaoNeural'}));
+        return true;
+      }
+      return false;
+    };
+    if(!trySend()){
+      // WebSocket 断开，重连后发送
+      connectWs();
+      let attempts=0;
+      const retry=setInterval(()=>{
+        if(trySend()||++attempts>10){clearInterval(retry);}
+      },500);
+    }
+  },[connectWs]);
 
   /* ---------- Load ---------- */
   const loadInterview=useCallback(async()=>{
@@ -161,7 +177,7 @@ function SessionContent() {
     const SR=createSR();if(!SR)setHasSpeechAPI(false);
     try{
       const stream=await navigator.mediaDevices.getUserMedia({audio:true});streamRef.current=stream;
-      if(SR){speechRef.current=SR;SR.onresult=(e:any)=>{let t='';for(let i=e.resultIndex;i<e.results.length;i++)t+=e.results[i][0].transcript;liveTextRef.current=t;setLiveText(t);};SR.onerror=()=>{};SR.start();}
+      if(SR){speechRef.current=SR;SR.onresult=(e:any)=>{let t='';for(let i=0;i<e.results.length;i++)t+=e.results[i][0].transcript;liveTextRef.current=t;setLiveText(t);};SR.onerror=()=>{};SR.start();}
       const mt=MediaRecorder.isTypeSupported('audio/webm;codecs=opus')?'audio/webm;codecs=opus':'audio/webm';
       const rec=new MediaRecorder(stream,{mimeType:mt});
       rec.ondataavailable=(e)=>{if(e.data.size>0)chunksRef.current.push(e.data);};

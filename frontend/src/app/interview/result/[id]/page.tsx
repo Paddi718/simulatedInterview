@@ -84,7 +84,9 @@ export default function ResultPage() {
           <h1 className="text-2xl font-bold">面试报告</h1>
           <p className="text-gray-500 mt-1">难度：{result.difficulty === 'easy' ? '初级' : result.difficulty === 'hard' ? '高级' : '中级'}</p>
         </div>
-        <Link href="/dashboard" className="text-blue-600 hover:underline">← 返回</Link>
+        <button onClick={() => router.push('/history')} className="text-blue-600 hover:underline flex items-center gap-1">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg> 返回
+        </button>
       </div>
 
       {/* Overall Score */}
