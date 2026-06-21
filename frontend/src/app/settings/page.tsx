@@ -20,21 +20,31 @@ export default function SettingsPage() {
   const [speed, setSpeed] = useState(1.0);
   const [autoRead, setAutoRead] = useState(false);
   const [saved, setSaved] = useState(false);
+  // API 配置
+  const [apiKey, setApiKey] = useState('');
+  const [apiBase, setApiBase] = useState('');
+  const [apiModel, setApiModel] = useState('');
+  const [showKey, setShowKey] = useState(false);
+  const [savedApi, setSavedApi] = useState(false);
+  const [testing, setTesting] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('access_token');
     if (!token) { router.push('/login'); return; }
-    // 从 localStorage 读取偏好
     setVoice(localStorage.getItem('tts_voice') || 'zh-CN-XiaoxiaoNeural');
     setSpeed(parseFloat(localStorage.getItem('tts_speed') || '1.0'));
     setAutoRead(localStorage.getItem('tts_auto_read') === 'true');
-    // 从后端同步
     api.get<any>('/api/auth/me').then((u) => {
       setUser(u);
       if (u.tts_preference) {
         setVoice(u.tts_preference.voice || voice);
         setSpeed(u.tts_preference.speed || speed);
         setAutoRead(u.tts_preference.auto_read ?? autoRead);
+      }
+      if (u.llm_config) {
+        setApiKey(u.llm_config.api_key || '');
+        setApiBase(u.llm_config.api_base || '');
+        setApiModel(u.llm_config.model || '');
       }
     }).catch(() => { localStorage.removeItem('access_token'); router.push('/login'); });
   }, []);
@@ -45,9 +55,29 @@ export default function SettingsPage() {
     localStorage.setItem('tts_auto_read', String(autoRead));
     try {
       await api.put('/api/auth/me', { tts_preference: { voice, speed, auto_read: autoRead } });
-    } catch (err) { console.warn('Failed to sync settings:', err); }
+    } catch (err) { console.warn('Failed to sync TTS settings:', err); }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+  };
+
+  const handleSaveApi = async () => {
+    const config = { api_key: apiKey, api_base: apiBase, model: apiModel };
+    try {
+      await api.put('/api/auth/me', { llm_config: config });
+    } catch (err) { console.warn('Failed to sync API settings:', err); }
+    setSavedApi(true);
+    setTimeout(() => setSavedApi(false), 2000);
+  };
+
+  const handleTestConnection = async () => {
+    setTesting(true);
+    try {
+      await api.post('/api/auth/test-llm', { api_key: apiKey, api_base: apiBase, model: apiModel });
+      alert('连接成功！API 配置有效。');
+    } catch (err: any) {
+      alert('连接失败：' + (err.message || '未知错误'));
+    }
+    setTesting(false);
   };
 
   return (
@@ -95,6 +125,50 @@ export default function SettingsPage() {
               <button onClick={handleSave} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
                 {saved ? '已保存 ✓' : '保存设置'}
               </button>
+            </div>
+          </div>
+
+          {/* API Configuration */}
+          <div className="bg-white dark:bg-gray-900 rounded-xl p-6 shadow-sm">
+            <h2 className="text-lg font-semibold mb-1">API 配置</h2>
+            <p className="text-xs text-gray-400 mb-4">自定义 LLM API，不填则使用系统默认配置</p>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-2">API Key</label>
+                <div className="relative">
+                  <input type={showKey ? 'text' : 'password'} value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    placeholder="sk-..."
+                    className="w-full px-3 py-2 pr-10 border rounded-lg font-mono text-sm" />
+                  <button onClick={() => setShowKey(!showKey)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs">
+                    {showKey ? '隐藏' : '显示'}
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">API Base URL</label>
+                <input type="text" value={apiBase}
+                  onChange={(e) => setApiBase(e.target.value)}
+                  placeholder="https://api.deepseek.com/v1"
+                  className="w-full px-3 py-2 border rounded-lg font-mono text-sm" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2">Model</label>
+                <input type="text" value={apiModel}
+                  onChange={(e) => setApiModel(e.target.value)}
+                  placeholder="deepseek-chat"
+                  className="w-full px-3 py-2 border rounded-lg font-mono text-sm" />
+              </div>
+              <div className="flex gap-3">
+                <button onClick={handleSaveApi} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">
+                  {savedApi ? '已保存 ✓' : '保存 API 配置'}
+                </button>
+                <button onClick={handleTestConnection} disabled={testing}
+                  className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm disabled:opacity-50">
+                  {testing ? '测试中…' : '测试连接'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

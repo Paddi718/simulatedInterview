@@ -29,6 +29,7 @@ async def init_db():
         for stmt in [
             "ALTER TABLE interviews ADD COLUMN IF NOT EXISTS scoring_status VARCHAR(20)",
             "ALTER TABLE interview_questions ADD COLUMN IF NOT EXISTS thinking_duration_seconds INTEGER",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS llm_config JSONB",
         ]:
             try:
                 await conn.execute(text(stmt))

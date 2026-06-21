@@ -14,6 +14,8 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     email: Mapped[str] = mapped_column(String(255), nullable=True)
     tts_preference: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=None)
+    llm_config: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=None)
+    # llm_config: {"api_key": str, "api_base": str, "model": str}
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     resumes = relationship("Resume", back_populates="user", cascade="all, delete-orphan")

@@ -23,13 +23,7 @@ async def register(data: UserCreate, db: AsyncSession = Depends(get_db)):
     token = create_access_token(user.id)
     return TokenResponse(
         access_token=token,
-        user=UserResponse(
-            id=str(user.id),
-            username=user.username,
-            email=user.email,
-            tts_preference=user.tts_preference,
-            created_at=user.created_at.isoformat(),
-        ),
+        user=_user_response(user),
     )
 
 
@@ -43,25 +37,24 @@ async def login(data: UserLogin, db: AsyncSession = Depends(get_db)):
     token = create_access_token(user.id)
     return TokenResponse(
         access_token=token,
-        user=UserResponse(
-            id=str(user.id),
-            username=user.username,
-            email=user.email,
-            tts_preference=user.tts_preference,
-            created_at=user.created_at.isoformat(),
-        ),
+        user=_user_response(user),
+    )
+
+
+def _user_response(user: User) -> UserResponse:
+    return UserResponse(
+        id=str(user.id),
+        username=user.username,
+        email=user.email,
+        tts_preference=user.tts_preference,
+        llm_config=user.llm_config,
+        created_at=user.created_at.isoformat(),
     )
 
 
 @router.get("/me", response_model=UserResponse)
 async def get_me(current_user: User = Depends(get_current_user)):
-    return UserResponse(
-        id=str(current_user.id),
-        username=current_user.username,
-        email=current_user.email,
-        tts_preference=current_user.tts_preference,
-        created_at=current_user.created_at.isoformat(),
-    )
+    return _user_response(current_user)
 
 
 @router.put("/me", response_model=UserResponse)
@@ -72,12 +65,25 @@ async def update_me(
 ):
     if data.tts_preference is not None:
         current_user.tts_preference = data.tts_preference
+    if data.llm_config is not None:
+        current_user.llm_config = data.llm_config
     await db.commit()
     await db.refresh(current_user)
-    return UserResponse(
-        id=str(current_user.id),
-        username=current_user.username,
-        email=current_user.email,
-        tts_preference=current_user.tts_preference,
-        created_at=current_user.created_at.isoformat(),
-    )
+    return _user_response(current_user)
+
+
+@router.post("/test-llm")
+async def test_llm_connection(data: dict, current_user: User = Depends(get_current_user)):
+    """测试用户自定义 LLM API 连接"""
+    from app.services.llm_client import llm_chat
+    try:
+        result = await llm_chat(
+            [{"role": "user", "content": "Hi"}],
+            temperature=0,
+            api_key=data.get("api_key", ""),
+            api_base=data.get("api_base", ""),
+            model=data.get("model", ""),
+        )
+        return {"code": 0, "data": {"response": result[:100]}, "message": "ok"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"连接失败: {str(e)[:200]}")

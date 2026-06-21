@@ -16,6 +16,7 @@ class UserResponse(BaseModel):
     username: str
     email: str | None = None
     tts_preference: dict | None = None
+    llm_config: dict | None = None
     created_at: str
 
     class Config:
@@ -24,6 +25,7 @@ class UserResponse(BaseModel):
 
 class UpdateUserRequest(BaseModel):
     tts_preference: dict | None = None
+    llm_config: dict | None = None
 
 
 class TokenResponse(BaseModel):
