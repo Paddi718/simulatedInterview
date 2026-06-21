@@ -20,8 +20,8 @@ async def create_document(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if fmt not in ("md", "html", "pdf"):
-        raise HTTPException(status_code=400, detail="Format must be md, html, or pdf")
+    if fmt not in ("md", "html", "pdf", "docx"):
+        raise HTTPException(status_code=400, detail="Format must be md, html, pdf, or docx")
 
     result = await db.execute(
         select(Interview).where(Interview.id == interview_id, Interview.user_id == current_user.id)
@@ -42,8 +42,8 @@ async def download_document(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if fmt not in ("md", "html", "pdf"):
-        raise HTTPException(status_code=400, detail="Format must be md, html, or pdf")
+    if fmt not in ("md", "html", "pdf", "docx"):
+        raise HTTPException(status_code=400, detail="Format must be md, html, pdf, or docx")
 
     result = await db.execute(
         select(Interview).where(Interview.id == interview_id, Interview.user_id == current_user.id)
@@ -55,7 +55,7 @@ async def download_document(
     filepath = await generate_document(db, interview_id, fmt, settings.document_storage_path)
 
     import os
-    media_type_map = {"md": "text/markdown", "html": "text/html", "pdf": "application/pdf"}
+    media_type_map = {"md": "text/markdown", "html": "text/html", "pdf": "application/pdf", "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
     filename = os.path.basename(filepath)
     return FileResponse(
         filepath,

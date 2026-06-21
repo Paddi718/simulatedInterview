@@ -67,6 +67,65 @@ def _build_pdf(interview: Interview, questions: list[InterviewQuestion]) -> byte
         return html.encode('utf-8')
 
 
+def _build_docx(interview: Interview, questions: list[InterviewQuestion]) -> bytes:
+    """生成 Word (.docx) 格式报告 — python-docx，纯 Python 不依赖外部工具"""
+    from docx import Document
+    from docx.shared import Inches, Pt, RGBColor
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    import io
+
+    doc = Document()
+    scores = interview.dimension_scores or {}
+
+    # 标题
+    title = doc.add_heading('模拟面试报告', 0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    # 概览
+    doc.add_heading('面试概览', 1)
+    table = doc.add_table(rows=5, cols=2, style='Light Grid Accent 1')
+    for row, (k, v) in zip(table.rows, [
+        ('总体评分', f"{interview.total_score or '-'} 分 / 100"),
+        ('难度级别', interview.difficulty),
+        ('面试时间', interview.started_at.isoformat() if interview.started_at else 'N/A'),
+        ('内容完整性', scores.get('content_completeness', '-')),
+        ('专业度', scores.get('professionalism', '-')),
+    ]):
+        row.cells[0].text = k
+        row.cells[1].text = str(v)
+
+    # 能力分析
+    if interview.ai_overview:
+        doc.add_heading('综合评价', 1)
+        doc.add_paragraph(interview.ai_overview)
+
+    # 逐题详情
+    doc.add_heading('逐题详情', 1)
+    for q in sorted(questions, key=lambda x: x.order_index):
+        sd = q.score_detail or {}
+        doc.add_heading(f"第{q.order_index}题：{q.question_text[:50]}", 2)
+        doc.add_paragraph(f"你的回答：{q.user_answer_transcript or '（未作答）'}")
+        if q.ai_score is not None:
+            doc.add_paragraph(f"评分：{q.ai_score} 分")
+        if q.ai_evaluation:
+            doc.add_paragraph(f"评语：{q.ai_evaluation}")
+        doc.add_paragraph(f"参考答案：{q.reference_answer or '暂无'}")
+        if q.improvement_suggestion:
+            doc.add_paragraph(f"改进建议：{q.improvement_suggestion}")
+
+    # 简历建议
+    if interview.resume_suggestions:
+        doc.add_heading('简历优化建议', 1)
+        doc.add_paragraph(interview.resume_suggestions)
+
+    doc.add_paragraph('')
+    doc.add_paragraph('由 AI 模拟面试系统生成').alignment = WD_ALIGN_PARAGRAPH.RIGHT
+
+    buf = io.BytesIO()
+    doc.save(buf)
+    return buf.getvalue()
+
+
 def _build_context(interview: Interview, questions: list[InterviewQuestion]) -> dict:
     """构建模板上下文"""
     scores = interview.dimension_scores or {}
@@ -143,18 +202,21 @@ async def generate_document(
         content = _build_html(interview, questions)
     elif doc_format == "pdf":
         content = _build_pdf(interview, questions)
+    elif doc_format == "docx":
+        content = _build_docx(interview, questions)
     else:
         raise ValueError(f"Unsupported format: {doc_format}")
 
     # 保存文件
     user_dir = Path(storage_dir) / str(interview.user_id) / "reports"
     user_dir.mkdir(parents=True, exist_ok=True)
-    ext = "pdf" if doc_format == "pdf" else doc_format
+    ext = doc_format
     filename = f"{interview_id}.{ext}"
     filepath = user_dir / filename
 
-    mode = "wb" if doc_format == "pdf" else "w"
-    encoding = None if doc_format == "pdf" else "utf-8"
+    binary_formats = ("pdf", "docx")
+    mode = "wb" if doc_format in binary_formats else "w"
+    encoding = None if doc_format in binary_formats else "utf-8"
     with open(filepath, mode, encoding=encoding) as f:
         f.write(content)
 

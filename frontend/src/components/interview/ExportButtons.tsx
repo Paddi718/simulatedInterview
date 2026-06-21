@@ -30,6 +30,7 @@ export default function ExportButtons({ interviewId }: ExportButtonsProps) {
   };
 
   const formatLabels: Record<string, { label: string; icon: string }> = {
+    docx: { label: '导出 Word', icon: '📋' },
     pdf: { label: '导出 PDF', icon: '📄' },
     html: { label: '导出 HTML', icon: '🌐' },
     md: { label: '导出 Markdown', icon: '📝' },
