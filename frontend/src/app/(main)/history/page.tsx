@@ -263,7 +263,7 @@ export default function HistoryPage() {
             {filteredRecords.map((r) => (
               <div key={r.id} className="group">
                 <Link
-                  href={`/interview/result/${r.id}`}
+                  href={r.status === 'completed' ? `/interview/result/${r.id}` : `/interview/session?id=${r.id}`}
                   className="block bg-white dark:bg-gray-900/80 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 hover:border-gray-200 dark:hover:border-gray-700 hover:shadow-md transition-all duration-200"
                 >
                   <div className="flex items-center gap-4 p-5">

@@ -171,9 +171,14 @@ function SessionContent() {
   const loadInterview=useCallback(async()=>{
     if(!interviewId){router.push('/dashboard');return;}
     try{setLoading(true);setError('');
-      const d=await api.get<{questions:Question[];status:string}>(`/api/interview/${interviewId}`);
+      type QWithAnswer = Question & {user_answer_transcript?:string|null};
+      const d=await api.get<{questions:QWithAnswer[];status:string}>(`/api/interview/${interviewId}`);
       if(d.status==='preparing')await api.post(`/api/interview/${interviewId}/start`);
-      setQuestions(d.questions||[]);
+      const qs = d.questions||[];
+      setQuestions(qs);
+      // 续答：跳到第一个未回答的题目
+      const firstUnanswered = qs.findIndex((q:QWithAnswer) => !q.user_answer_transcript);
+      if(firstUnanswered>=0)setCurrentIndex(firstUnanswered);
     }catch(e:any){setError(e.message||'加载失败');}finally{setLoading(false);}
   },[interviewId,router]);
   useEffect(()=>{loadInterview();connectWs();},[loadInterview,connectWs]);

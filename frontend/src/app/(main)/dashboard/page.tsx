@@ -272,11 +272,11 @@ export default function DashboardPage() {
               {interviews.slice(0, 3).map((interview) => (
                 <Link
                   key={interview.id}
-                  href={`/interview/result/${interview.id}`}
+                  href={interview.status === 'completed' ? `/interview/result/${interview.id}` : `/interview/session?id=${interview.id}`}
                   className="flex items-center justify-between px-6 py-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
                 >
                   <div className="flex items-center gap-4">
-                    <div className="w-2 h-2 rounded-full bg-green-400 shrink-0" />
+                    <div className={`w-2 h-2 rounded-full shrink-0 ${interview.status === 'completed' ? 'bg-green-400' : 'bg-amber-400'}`} />
                     <div>
                       <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
                         {interview.position || (interview.difficulty

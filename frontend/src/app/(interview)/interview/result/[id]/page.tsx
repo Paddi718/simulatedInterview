@@ -52,6 +52,11 @@ export default function ResultPage() {
   const loadData = async () => {
     try {
       const data = await api.get<InterviewResult>(`/api/interview/${id}`);
+      // 未完成的面试 → 跳转续答，不展示结果页
+      if (data.status !== 'completed') {
+        router.replace(`/interview/session?id=${id}`);
+        return;
+      }
       setResult(data);
       setLoading(false);
       if (data.total_score === null && !data.dimension_scores) {
