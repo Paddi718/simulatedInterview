@@ -37,12 +37,25 @@ async def list_interviews(
         .order_by(Interview.created_at.desc())
     )
     interviews = result.scalars().all()
+
+    # 批量加载 JD 获取岗位名称
+    jd_ids = [i.jd_id for i in interviews if i.jd_id]
+    jd_map = {}
+    if jd_ids:
+        from app.models.job_description import JobDescription
+        jd_result = await db.execute(
+            select(JobDescription).where(JobDescription.id.in_(jd_ids))
+        )
+        for jd in jd_result.scalars().all():
+            jd_map[str(jd.id)] = jd
+
     return [
         {
             "id": str(i.id),
             "status": i.status,
             "difficulty": i.difficulty,
             "total_score": i.total_score,
+            "position": (jd_map.get(str(i.jd_id)).parsed_data or {}).get("position", "") if i.jd_id and str(i.jd_id) in jd_map else "",
             "created_at": i.created_at.isoformat(),
         }
         for i in interviews

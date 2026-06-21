@@ -23,6 +23,7 @@ interface Interview {
   difficulty?: string;
   total_score?: number;
   status?: string;
+  position?: string;
 }
 
 interface User {
@@ -271,16 +272,16 @@ export default function DashboardPage() {
               {interviews.slice(0, 3).map((interview) => (
                 <Link
                   key={interview.id}
-                  href={`/history/${interview.id}`}
+                  href={`/interview/result/${interview.id}`}
                   className="flex items-center justify-between px-6 py-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
                 >
                   <div className="flex items-center gap-4">
                     <div className="w-2 h-2 rounded-full bg-green-400 shrink-0" />
                     <div>
                       <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                        {interview.difficulty
-                          ? `${interview.difficulty} 难度面试`
-                          : '模拟面试'}
+                        {interview.position || (interview.difficulty
+                          ? `${interview.difficulty === 'easy' ? '初级' : interview.difficulty === 'hard' ? '高级' : '中级'} 面试`
+                          : '模拟面试')}
                       </p>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                         {formatDate(interview.created_at)}
