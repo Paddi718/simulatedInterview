@@ -11,9 +11,9 @@ from app.config import get_settings
 
 settings = get_settings()
 
-# 模型路径
+# 模型路径: __file__ = /app/app/services/vad_service.py → 上 3 层到 /app
 VAD_MODEL_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
+    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
     "models", "snakers4_silero-vad"
 )
 VAD_MODEL_PATH = os.path.join(VAD_MODEL_DIR, "src", "silero_vad", "data", "silero_vad.onnx")
