@@ -150,7 +150,6 @@ export default function HistoryPage() {
 
   const handleRetry = async (e: React.MouseEvent, id: string) => {
     e.preventDefault();
-    e.stopPropagation();
     setRetrying(id);
     try {
       const res = await api.post<{ id: string }>(`/api/interview/${id}/retry`);
@@ -261,89 +260,83 @@ export default function HistoryPage() {
         ) : (
           <div className="space-y-2.5">
             {filteredRecords.map((r) => (
-              <div key={r.id} className="group">
+              <div key={r.id} className="group flex bg-white dark:bg-gray-900/80 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 hover:border-gray-200 dark:hover:border-gray-700 hover:shadow-md transition-all duration-200 overflow-hidden">
                 <Link
                   href={r.status === 'completed' ? `/interview/result/${r.id}` : `/interview/session?id=${r.id}`}
-                  className="block bg-white dark:bg-gray-900/80 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 hover:border-gray-200 dark:hover:border-gray-700 hover:shadow-md transition-all duration-200"
+                  className="flex items-center gap-4 p-5 flex-1 min-w-0"
                 >
-                  <div className="flex items-center gap-4 p-5">
-                    {/* Colored difficulty indicator bar */}
-                    <div
-                      className={`w-1 h-12 shrink-0 rounded-full ${difficultyBarColor[r.difficulty] || 'bg-gray-300'}`}
-                    />
+                  {/* Colored difficulty indicator bar */}
+                  <div
+                    className={`w-1 h-12 shrink-0 rounded-full ${difficultyBarColor[r.difficulty] || 'bg-gray-300'}`}
+                  />
 
-                    {/* Center content */}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
-                        {r.position || '模拟面试'}
-                      </p>
-                      <div className="flex items-center gap-2 mt-1.5">
-                        <span
-                          className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium leading-tight ${
-                            r.difficulty === 'easy'
-                              ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                              : r.difficulty === 'hard'
-                                ? 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                                : 'bg-yellow-50 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
-                          }`}
-                        >
-                          {difficultyLabels[r.difficulty] || '未知'}
-                        </span>
-                        <span className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
-                          <Clock className="h-3 w-3" />
-                          {formatDate(r.created_at)}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Right: score or status + hover actions in normal flow */}
-                    <div className="flex items-center gap-1 shrink-0">
-                      {/* Action buttons — slide in on hover */}
-                      <div className="flex items-center gap-1 overflow-hidden transition-all duration-200 max-w-0 opacity-0 pointer-events-none group-hover:max-w-20 group-hover:opacity-100 group-hover:pointer-events-auto group-hover:mr-1">
-                        <button
-                          onClick={(e) => handleRetry(e, r.id)}
-                          disabled={retrying === r.id}
-                          className="w-7 h-7 rounded-lg text-gray-400 hover:text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-900/20 flex items-center justify-center disabled:opacity-50 transition-colors"
-                          title="重新模拟"
-                        >
-                          {retrying === r.id ? (
-                            <div className="w-3 h-3 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
-                          ) : (
-                            <RefreshCw className="w-3.5 h-3.5" />
-                          )}
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            setDeleteTarget(r.id);
-                          }}
-                          disabled={deleting === r.id}
-                          className="w-7 h-7 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center justify-center disabled:opacity-50 transition-colors"
-                          title="删除记录"
-                        >
-                          {deleting === r.id ? (
-                            <div className="w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
-                          ) : (
-                            <Trash2 className="w-3.5 h-3.5" />
-                          )}
-                        </button>
-                      </div>
-
-                      {r.total_score != null ? (
-                        <span className="text-xl font-bold tracking-tight text-brand-500 dark:text-brand-400">
-                          {r.total_score}
-                          <span className="text-xs font-normal text-gray-400 dark:text-gray-500 ml-0.5">分</span>
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-gray-800 px-3 py-1 text-xs font-medium text-gray-500 dark:text-gray-400">
-                          <RotateCw className="h-3 w-3" />
-                          {r.status === 'completed' ? '待评分' : '进行中'}
-                        </span>
-                      )}
+                  {/* Center content */}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
+                      {r.position || '模拟面试'}
+                    </p>
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <span
+                        className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium leading-tight ${
+                          r.difficulty === 'easy'
+                            ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                            : r.difficulty === 'hard'
+                              ? 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                              : 'bg-yellow-50 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                        }`}
+                      >
+                        {difficultyLabels[r.difficulty] || '未知'}
+                      </span>
+                      <span className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
+                        <Clock className="h-3 w-3" />
+                        {formatDate(r.created_at)}
+                      </span>
                     </div>
                   </div>
+
+                  {/* Score or status */}
+                  <div className="shrink-0">
+                    {r.total_score != null ? (
+                      <span className="text-xl font-bold tracking-tight text-brand-500 dark:text-brand-400">
+                        {r.total_score}
+                        <span className="text-xs font-normal text-gray-400 dark:text-gray-500 ml-0.5">分</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-gray-100 dark:bg-gray-800 px-3 py-1 text-xs font-medium text-gray-500 dark:text-gray-400">
+                        <RotateCw className="h-3 w-3" />
+                        {r.status === 'completed' ? '待评分' : '进行中'}
+                      </span>
+                    )}
+                  </div>
                 </Link>
+
+                {/* Action buttons — outside Link, slide in on hover */}
+                <div className="flex items-center gap-1 px-2 overflow-hidden transition-all duration-200 max-w-0 opacity-0 group-hover:max-w-20 group-hover:opacity-100 group-hover:px-3">
+                  <button
+                    onClick={(e) => handleRetry(e, r.id)}
+                    disabled={retrying === r.id}
+                    className="w-7 h-7 rounded-lg text-gray-400 hover:text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-900/20 flex items-center justify-center disabled:opacity-50 transition-colors"
+                    title="重新模拟"
+                  >
+                    {retrying === r.id ? (
+                      <div className="w-3 h-3 border-2 border-brand-500 border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <RefreshCw className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setDeleteTarget(r.id)}
+                    disabled={deleting === r.id}
+                    className="w-7 h-7 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center justify-center disabled:opacity-50 transition-colors"
+                    title="删除记录"
+                  >
+                    {deleting === r.id ? (
+                      <div className="w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <Trash2 className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                </div>
               </div>
             ))}
           </div>
