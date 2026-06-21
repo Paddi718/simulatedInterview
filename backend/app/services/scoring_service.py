@@ -18,18 +18,43 @@ async def score_question(
 
     answer_text = (question.user_answer_transcript or "").strip()
 
-    # 空回答或标记为未回答的，直接给 0 分，不调用 LLM
+    # 空回答或标记为未回答的，仍调用 LLM 生成参考答案
     if not answer_text or answer_text == "（未回答）":
-        return {
-            "content_completeness": 0,
-            "professionalism": 0,
-            "expression": 0,
-            "star_method": 0,
-            "total_score": 0,
-            "evaluation": "未作答，无法评分。请在面试中认真回答每一道题。",
-            "reference_answer": "",
-            "improvement_suggestion": "请针对该题目进行回答练习。",
-        }
+        answer_text = "（未作答）"
+        prompt = f"""你是一位专业的面试官。面试者未回答以下题目，请仅提供参考答案和改进建议。
+请生成该题的参考答案和简短的建议。
+
+题目类型：{question.question_type}
+题目：{question.question_text}
+面试者回答：（未作答）
+
+输出 JSON 格式：
+{{
+  "content_completeness": 0,
+  "professionalism": 0,
+  "expression": 0,
+  "star_method": 0,
+  "total_score": 0,
+  "evaluation": "本题未作答。请在面试中认真回答每一道题。",
+  "reference_answer": "本题的参考答案...",
+  "improvement_suggestion": "具体的改进建议"
+}}
+
+只输出 JSON。"""
+        result = await llm_chat([
+            {"role": "system", "content": "你是一位面试官。面试者跳过了这道题，请仅生成参考答案和改进建议。必须只输出JSON。"},
+            {"role": "user", "content": prompt},
+        ], temperature=0.1)
+        result = result.strip()
+        if result.startswith("```"): result = result.split("\n", 1)[1]
+        if result.endswith("```"): result = result[:-3]
+        scores = json.loads(result)
+        scores["content_completeness"] = 0
+        scores["professionalism"] = 0
+        scores["expression"] = 0
+        scores["star_method"] = 0
+        scores["total_score"] = 0
+        return scores
 
     prompt = f"""你是一位严格的专业面试评分官。请对以下面试者的回答进行客观评分。
 
