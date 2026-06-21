@@ -91,6 +91,7 @@ function SessionContent() {
     if (timerRef.current) clearInterval(timerRef.current);
     stopAll();
     if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
+    try{(window as any).speechSynthesis?.cancel();}catch{}
   }, []);
 
   const stopAll = () => {
@@ -128,26 +129,13 @@ function SessionContent() {
   },[interviewId]);
 
   const speak=useCallback((text:string)=>{
-    // 降级：先用浏览器内置 TTS
-    if(typeof window!=='undefined'&&(window as any).speechSynthesis){
-      const u=new SpeechSynthesisUtterance(text);
-      u.lang='zh-CN';u.rate=1.0;
-      try{(window as any).speechSynthesis.speak(u);return;}catch{}
-    }
-    // 再尝试后端 edge-tts（如果 WS 已连接）
-    const doSend=()=>{
-      const ws=wsRef.current;
-      if(ws&&ws.readyState===WebSocket.OPEN){
-        ws.send(JSON.stringify({type:'tts_request',text,voice:localStorage.getItem('tts_voice')||'zh-CN-XiaoxiaoNeural'}));
-        return true;
-      }
-      return false;
-    };
-    if(!doSend()){
-      connectWs();
-      setTimeout(doSend,1500);
-    }
-  },[connectWs]);
+    const ss=(window as any).speechSynthesis;
+    if(!ss)return;
+    ss.cancel();  // 先停止当前朗读
+    const u=new SpeechSynthesisUtterance(text);
+    u.lang='zh-CN';u.rate=1.0;
+    ss.speak(u);
+  },[]);
 
   /* ---------- Load ---------- */
   const loadInterview=useCallback(async()=>{
@@ -170,8 +158,8 @@ function SessionContent() {
     speak(questions[currentIndex].question_text);
   },[phase,currentIndex,questions,hasAutoRead,speak]);
 
-  // 题目切换时重置 autoRead 标记
-  useEffect(()=>{setHasAutoRead(false);},[currentIndex]);
+  // 题目切换时停止朗读 + 重置 autoRead 标记
+  useEffect(()=>{try{(window as any).speechSynthesis?.cancel();}catch{}setHasAutoRead(false);},[currentIndex]);
 
   /* ---------- Recording ---------- */
   const startRecording=useCallback(async()=>{
@@ -238,6 +226,7 @@ function SessionContent() {
   },[interviewId,currentIndex,questions,recordedTime]);
 
   const moveToNextOrComplete=useCallback(()=>{
+    try{(window as any).speechSynthesis?.cancel();}catch{}
     if(currentIndex<questions.length-1){setCurrentIndex(i=>i+1);setPhase('question');setTranscript('');setLiveText('');setTimer(0);setRecordedTime(0);setFeedback(null);}
     else setShowConfirm(true);
   },[currentIndex,questions.length]);
