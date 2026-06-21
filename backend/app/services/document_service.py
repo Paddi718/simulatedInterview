@@ -8,6 +8,7 @@ from app.models.interview import Interview
 from app.models.interview_question import InterviewQuestion
 from app.models.interview_document import InterviewDocument
 from app.models.resume import Resume
+from app.models.job_description import JobDescription
 
 QUESTION_TYPE_LABELS = {
     "introduction": "自我介绍",
@@ -196,6 +197,34 @@ async def generate_document(
     )
     questions = q_result.scalars().all()
 
+    # 获取简历和JD信息用于生成文件名
+    candidate_name = ""
+    job_position = ""
+    try:
+        r_result = await db.execute(select(Resume).where(Resume.id == interview.resume_id))
+        resume = r_result.scalar_one_or_none()
+        if resume and resume.parsed_data:
+            candidate_name = (resume.parsed_data.get("basic") or {}).get("name", "") or ""
+        j_result = await db.execute(select(JobDescription).where(JobDescription.id == interview.jd_id))
+        jd = j_result.scalar_one_or_none()
+        if jd and jd.parsed_data:
+            job_position = (jd.parsed_data.get("position") or "").strip()
+    except Exception:
+        pass
+
+    # Build professional filename: 模拟面试_姓名_岗位_日期.ext
+    import re
+    date_str = datetime.now().strftime("%Y%m%d")
+    name_part = candidate_name or "候选人"
+    position_part = job_position or "面试岗位"
+    # Sanitize: remove special chars, replace spaces
+    for part in [name_part, position_part]:
+        part = re.sub(r'[\\/:*?"<>|]', '', part).strip()
+    safe_name = re.sub(r'\s+', '', name_part) if name_part else "候选人"
+    safe_position = re.sub(r'\s+', '', position_part) if position_part else "面试"
+    ext = doc_format
+    filename = f"模拟面试_{safe_name}_{safe_position}_{date_str}.{ext}"
+
     if doc_format == "md":
         content = _build_markdown(interview, questions)
     elif doc_format == "html":
@@ -210,8 +239,6 @@ async def generate_document(
     # 保存文件
     user_dir = Path(storage_dir) / str(interview.user_id) / "reports"
     user_dir.mkdir(parents=True, exist_ok=True)
-    ext = doc_format
-    filename = f"{interview_id}.{ext}"
     filepath = user_dir / filename
 
     binary_formats = ("pdf", "docx")
