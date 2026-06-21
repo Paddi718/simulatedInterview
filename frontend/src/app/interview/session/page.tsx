@@ -79,7 +79,8 @@ function SessionContent() {
   const [hasSpeechAPI, setHasSpeechAPI] = useState(true);
 
   const timerRef = useRef<NodeJS.Timeout|null>(null);
-  const timerValueRef = useRef(0);  // 计时器实时值，避免闭包陈旧
+  const timerValueRef = useRef(0);    // 计时器实时值
+  const totalTimeRef = useRef(0);     // 累计总耗时
   const wsRef = useRef<WebSocket|null>(null);
   const mediaRecorderRef = useRef<MediaRecorder|null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -185,7 +186,7 @@ function SessionContent() {
 
   const processAudio=async()=>{
     if(timerRef.current){clearInterval(timerRef.current);timerRef.current=null;}
-    const time=timerValueRef.current;setRecordedTime(time);timerValueRef.current=0;
+    const time=timerValueRef.current;setRecordedTime(time);totalTimeRef.current+=time;timerValueRef.current=0;
     // 先用浏览器实时识别结果，立即进入 review
     const browserText=liveTextRef.current;
     setTranscript(browserText);
@@ -399,7 +400,7 @@ function SessionContent() {
           <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 sm:p-8 text-center">
             <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-green-100 flex items-center justify-center"><svg className="w-8 h-8 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/></svg></div>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">全部回答完成</h3>
-            <p className="text-sm text-gray-500 mb-6">你已回答全部 {total} 道题目。⏱ 总耗时约 {formatTime(recordedTime)}</p>
+            <p className="text-sm text-gray-500 mb-6">你已回答全部 {total} 道题目。⏱ 总耗时 {formatTime(totalTimeRef.current)}</p>
             <div className="flex gap-3">
               <button onClick={()=>setShowConfirm(false)} disabled={completing} className="flex-1 px-5 py-2.5 text-sm font-medium text-gray-600 bg-gray-100 rounded-xl hover:bg-gray-200 disabled:opacity-50">再看看</button>
               <button onClick={handleComplete} disabled={completing} className="flex-1 px-5 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-60 flex items-center justify-center gap-2">{completing?<><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"/>提交中…</>:'完成面试'}</button>
