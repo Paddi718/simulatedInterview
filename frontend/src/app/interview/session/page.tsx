@@ -233,9 +233,12 @@ function SessionContent() {
     setPhase('scoring');
     try{await api.post(`/api/interview/${interviewId}/submit-answer`,{order_index:q.order_index,answer_transcript:answerText,duration_seconds:skip?0:recordedTime});}
     catch{setPhase('review');return;}
-    const ws=wsRef.current;
-    if(ws?.readyState===WebSocket.OPEN){ws.send(JSON.stringify({type:'score_question',order_index:q.order_index}));}
-    else{try{const res=await api.post<QuestionScore>(`/api/interview/${interviewId}/score-question`,{order_index:q.order_index});if(res&&!(res as any).error){setFeedback(res);setPhase('feedback');}else moveToNextOrComplete();}catch{moveToNextOrComplete();}}
+    // 用 REST 评分（可靠，不依赖 WS 回调）
+    try{
+      const res=await api.post<QuestionScore>(`/api/interview/${interviewId}/score-question`,{order_index:q.order_index});
+      if(res&&!(res as any).error){setFeedback(res);setPhase('feedback');return;}
+    }catch{}
+    moveToNextOrComplete();
   },[interviewId,currentIndex,questions,recordedTime]);
 
   const moveToNextOrComplete=useCallback(()=>{
