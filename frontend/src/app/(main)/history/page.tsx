@@ -134,13 +134,13 @@ export default function HistoryPage() {
     }
   };
 
-  const handleDelete = async () => {
-    if (!deleteTarget) return;
-    setDeleting(deleteTarget);
+  const handleDelete = async (id: string) => {
+    if (!id) return;
+    setDeleting(id);
+    setDeleteTarget(null);
     try {
-      await api.del(`/api/interview/${deleteTarget}`);
-      setRecords((prev) => prev.filter((r) => r.id !== deleteTarget));
-      setDeleteTarget(null);
+      await api.del(`/api/interview/${id}`);
+      setRecords((prev) => prev.filter((r) => r.id !== id));
     } catch (err: any) {
       alert('删除失败：' + (err.message || '未知错误'));
     } finally {
@@ -349,7 +349,7 @@ export default function HistoryPage() {
         onOpenChange={(open) => {
           if (!open) setDeleteTarget(null);
         }}
-        onConfirm={handleDelete}
+        onConfirm={() => handleDelete(deleteTarget!)}
         deleting={deleting !== null}
       />
     </div>
