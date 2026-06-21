@@ -24,3 +24,11 @@ async def get_db():
 async def init_db():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # 补建缺失的列（create_all 只建表不建列）
+        from sqlalchemy import text
+        try:
+            await conn.execute(text(
+                "ALTER TABLE interviews ADD COLUMN IF NOT EXISTS scoring_status VARCHAR(20)"
+            ))
+        except Exception:
+            pass

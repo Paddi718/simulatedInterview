@@ -292,9 +292,12 @@ async def complete_interview(
 
     interview = await InterviewEngine.complete_interview(db, interview_id)
 
-    # 标记评分开始
-    interview.scoring_status = "pending"
-    await db.commit()
+    # 标记评分开始（列可能不存在，失败不阻塞流程）
+    try:
+        interview.scoring_status = "pending"
+        await db.commit()
+    except Exception:
+        pass
 
     # 创建 SSE 通知事件
     event = asyncio.Event()
@@ -307,35 +310,35 @@ async def complete_interview(
         import asyncio
         async def _run():
             from app.database import async_session_factory
+            from app.services.scoring_service import run_full_scoring as _run_scoring
             async with async_session_factory() as bg_db:
+                # 尝试更新状态（失败不影响评分流程）
                 try:
-                    # 更新状态：评分中
                     ir = await bg_db.execute(select(Interview).where(Interview.id == interview_id))
                     i = ir.scalar_one_or_none()
                     if i:
                         i.scoring_status = "scoring_questions"
                         await bg_db.commit()
+                except Exception:
+                    pass  # scoring_status 列可能不存在，忽略
 
-                    from app.services.scoring_service import run_full_scoring
-                    await run_full_scoring(bg_db, interview_id)
+                # 执行评分（核心逻辑，必须执行）
+                try:
+                    await _run_scoring(bg_db, interview_id)
+                except Exception as e:
+                    print(f"[Complete] run_full_scoring failed: {e}")
 
-                    # 更新状态：完成
+                # 尝试更新最终状态
+                try:
                     ir2 = await bg_db.execute(select(Interview).where(Interview.id == interview_id))
                     i2 = ir2.scalar_one_or_none()
                     if i2:
                         i2.scoring_status = "done"
                         await bg_db.commit()
-                except Exception as e:
-                    print(f"[Complete] Background scoring failed: {e}")
-                    try:
-                        ir3 = await bg_db.execute(select(Interview).where(Interview.id == interview_id))
-                        i3 = ir3.scalar_one_or_none()
-                        if i3:
-                            i3.scoring_status = "failed"
-                            await bg_db.commit()
-                    except Exception:
-                        pass
-            # 通知 SSE 监听者
+                except Exception:
+                    pass
+
+            # 通知 SSE 监听者（无论评分成功与否都通知）
             _main_loop.call_soon_threadsafe(event.set)
         loop = asyncio.new_event_loop()
         loop.run_until_complete(_run())

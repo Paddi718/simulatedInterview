@@ -1,4 +1,5 @@
 import json
+import asyncio
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -209,7 +210,7 @@ async def generate_interview_overview(
 
 
 async def run_full_scoring(db: AsyncSession, interview_id: uuid.UUID) -> Interview:
-    """完整评分流程：逐题评分 → 算术聚合 → 写入总分数 → LLM总评(仅文字)"""
+    """完整评分流程：并行逐题评分 → 算术聚合 → 写入总分数 → LLM总评(仅文字)"""
 
     i_result = await db.execute(select(Interview).where(Interview.id == interview_id))
     interview = i_result.scalar_one_or_none()
@@ -230,12 +231,28 @@ async def run_full_scoring(db: AsyncSession, interview_id: uuid.UUID) -> Intervi
     jd = j_result.scalar_one_or_none()
     jd_data = jd.parsed_data if jd else {}
 
-    # Phase 1: 逐题评分（跳过已评分的题）
-    for question in questions:
+    # Phase 1: 并行评分所有未评分题目（LLM 调用并发，大幅缩短等待时间）
+    async def _score_one(question: InterviewQuestion):
         if question.ai_score is not None:
-            continue  # 已评分，跳过
+            return question, None  # 已评分
         try:
             scores = await score_question(question, resume_data, jd_data)
+            return question, scores
+        except Exception as e:
+            print(f"[Scoring] Question {question.order_index} scoring failed: {e}")
+            return question, {"_error": str(e)[:200]}
+
+    # 并发执行所有 LLM 评分调用（不写 DB，无竞争）
+    results = await asyncio.gather(*[_score_one(q) for q in questions])
+
+    # 串行写入评分结果到 DB（安全）
+    for question, scores in results:
+        if scores is None:
+            continue  # 已评分，跳过
+        if "_error" in scores:
+            question.ai_score = 0
+            question.ai_evaluation = f"评分失败: {scores['_error']}"
+        else:
             question.ai_score = scores.get("total_score", 0)
             question.score_detail = {k: v for k, v in scores.items()
                                      if k in ["content_completeness", "professionalism",
@@ -243,10 +260,6 @@ async def run_full_scoring(db: AsyncSession, interview_id: uuid.UUID) -> Intervi
             question.ai_evaluation = scores.get("evaluation", "")
             question.reference_answer = scores.get("reference_answer", "")
             question.improvement_suggestion = scores.get("improvement_suggestion", "")
-        except Exception as e:
-            print(f"[Scoring] Question {question.order_index} scoring failed: {e}")
-            question.ai_score = 0
-            question.ai_evaluation = f"评分失败: {str(e)[:200]}"
 
     # Phase 2: 纯算术计算总分和维度分，立即写入（不等 LLM）
     agg = _compute_aggregate_scores(questions)
