@@ -77,3 +77,20 @@ async def get_jd(
         id=str(jd.id), raw_text=jd.raw_text, parsed_data=jd.parsed_data,
         source=jd.source, created_at=jd.created_at.isoformat(),
     )
+
+
+@router.delete("/{jd_id}")
+async def delete_jd(
+    jd_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(JobDescription).where(JobDescription.id == jd_id, JobDescription.user_id == current_user.id)
+    )
+    jd = result.scalar_one_or_none()
+    if not jd:
+        raise HTTPException(status_code=404, detail="JD not found")
+    await db.delete(jd)
+    await db.commit()
+    return {"code": 0, "message": "ok"}

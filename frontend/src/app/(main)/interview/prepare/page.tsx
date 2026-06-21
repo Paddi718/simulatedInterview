@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Check, FileText, Upload, Loader2, Brain, Target, Zap,
-  ChevronRight, ChevronLeft, AlertCircle, ClipboardList
+  ChevronRight, ChevronLeft, AlertCircle, ClipboardList, Trash2
 } from 'lucide-react';
 import { api } from '@/lib/api';
 
@@ -38,6 +38,7 @@ export default function PreparePage() {
   const [loading, setLoading] = useState(false);
   const [uploadingResume, setUploadingResume] = useState(false);
   const [creatingJd, setCreatingJd] = useState(false);
+  const [deletingJdId, setDeletingJdId] = useState<string | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -89,6 +90,20 @@ export default function PreparePage() {
       setError(err.message);
     } finally {
       setCreatingJd(false);
+    }
+  };
+
+  const handleDeleteJd = async (e: React.MouseEvent, jdId: string) => {
+    e.stopPropagation();
+    setDeletingJdId(jdId);
+    try {
+      await api.del(`/api/jd/${jdId}`);
+      if (selectedJd === jdId) setSelectedJd('');
+      setJds(prev => prev.filter(j => j.id !== jdId));
+    } catch (err: any) {
+      setError(err.message || '删除失败');
+    } finally {
+      setDeletingJdId(null);
     }
   };
 
@@ -293,7 +308,7 @@ export default function PreparePage() {
                   <div
                     key={j.id}
                     onClick={() => { setSelectedJd(j.id); setJdText(''); }}
-                    className={`rounded-2xl border p-4 cursor-pointer transition-all duration-200 ${
+                    className={`group rounded-2xl border p-4 cursor-pointer transition-all duration-200 ${
                       selectedJd === j.id
                         ? 'border-blue-500 bg-blue-50/60 dark:bg-blue-950/30 dark:border-blue-600 shadow-sm shadow-blue-100 dark:shadow-blue-900/20'
                         : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-sm'
@@ -322,6 +337,18 @@ export default function PreparePage() {
                           <Check className="w-3.5 h-3.5 text-white" />
                         </div>
                       )}
+                      <button
+                        onClick={(e) => handleDeleteJd(e, j.id)}
+                        disabled={deletingJdId === j.id}
+                        className="ml-2 p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0"
+                        title="删除岗位"
+                      >
+                        {deletingJdId === j.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-4 h-4" />
+                        )}
+                      </button>
                     </div>
                   </div>
                 ))}

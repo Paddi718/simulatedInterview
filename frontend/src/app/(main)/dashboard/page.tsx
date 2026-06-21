@@ -19,9 +19,9 @@ import { cn } from '@/lib/utils';
 
 interface Interview {
   id: string;
-  date: string;
+  created_at: string;
   difficulty?: string;
-  score?: number;
+  total_score?: number;
   status?: string;
 }
 
@@ -106,7 +106,7 @@ export default function DashboardPage() {
   const averageScore =
     totalInterviews > 0
       ? Math.round(
-          interviews.reduce((sum, i) => sum + (i.score || 0), 0) / totalInterviews
+          interviews.reduce((sum, i) => sum + (i.total_score || 0), 0) / totalInterviews
         )
       : null;
   const lastInterview = interviews.length > 0 ? interviews[0] : null;
@@ -195,7 +195,7 @@ export default function DashboardPage() {
               <Clock className="w-5 h-5 text-purple-600 dark:text-purple-400" />
             </div>
             <p className="text-3xl font-bold text-gray-900 dark:text-gray-100">
-              {lastInterview ? getRelativeTime(lastInterview.date) : '暂无'}
+              {lastInterview ? getRelativeTime(lastInterview.created_at) : '暂无'}
             </p>
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">最近面试</p>
           </div>
@@ -283,23 +283,23 @@ export default function DashboardPage() {
                           : '模拟面试'}
                       </p>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                        {formatDate(interview.date)}
+                        {formatDate(interview.created_at)}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3">
-                    {interview.score !== undefined && interview.score !== null && (
+                    {interview.total_score !== undefined && interview.total_score !== null && (
                       <span
                         className={cn(
                           'text-sm font-semibold',
-                          interview.score >= 80
+                          interview.total_score >= 80
                             ? 'text-green-600 dark:text-green-400'
-                            : interview.score >= 60
+                            : interview.total_score >= 60
                               ? 'text-amber-600 dark:text-amber-400'
                               : 'text-red-600 dark:text-red-400'
                         )}
                       >
-                        {interview.score} 分
+                        {interview.total_score} 分
                       </span>
                     )}
                     <span className="text-gray-300 dark:text-gray-600">&rarr;</span>

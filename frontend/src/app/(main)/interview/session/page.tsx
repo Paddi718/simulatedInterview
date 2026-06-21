@@ -189,8 +189,10 @@ function SessionContent() {
   useEffect(()=>{try{(window as any).speechSynthesis?.cancel();}catch{}setHasAutoRead(false);},[currentIndex]);
 
   /* ---------- Thinking timer ---------- */
+  // 兜底：如果 moveToNextOrComplete 已启动计时器则跳过，否则在此启动
   useEffect(()=>{
     if(phase!=='question'||!questions[currentIndex])return;
+    if(thinkingRef.current)return; // 已在 moveToNextOrComplete 中启动
     thinkingValueRef.current=0;setThinkingTime(0);setFinalThinkingTime(0);
     thinkingRef.current=setInterval(()=>{const v=thinkingValueRef.current+1;thinkingValueRef.current=v;setThinkingTime(v);},1000);
     return ()=>{if(thinkingRef.current){clearInterval(thinkingRef.current);thinkingRef.current=null;}};
@@ -278,7 +280,13 @@ function SessionContent() {
 
   const moveToNextOrComplete=useCallback(()=>{
     try{(window as any).speechSynthesis?.cancel();}catch{}
-    if(currentIndex<questions.length-1){setCurrentIndex(i=>i+1);setPhase('question');setTranscript('');setLiveText('');setTimer(0);setRecordedTime(0);setFeedback(null);}
+    if(currentIndex<questions.length-1){
+      setCurrentIndex(i=>i+1);setPhase('question');setTranscript('');setLiveText('');setTimer(0);setRecordedTime(0);setFeedback(null);
+      // 立即启动思考计时器，避免 useEffect 延迟导致的闪烁
+      if(thinkingRef.current){clearInterval(thinkingRef.current);}
+      thinkingValueRef.current=0;setThinkingTime(0);setFinalThinkingTime(0);
+      thinkingRef.current=setInterval(()=>{const v=thinkingValueRef.current+1;thinkingValueRef.current=v;setThinkingTime(v);},1000);
+    }
     else setShowConfirm(true);
   },[currentIndex,questions.length]);
 
