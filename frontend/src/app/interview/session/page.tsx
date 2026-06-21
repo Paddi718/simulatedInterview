@@ -70,6 +70,7 @@ function SessionContent() {
   const [recordedTime, setRecordedTime] = useState(0);   // 录音结束时的时长
   const [transcript, setTranscript] = useState('');
   const [liveText, setLiveText] = useState('');
+  const [asrLoading, setAsrLoading] = useState(false);
   const [wsConnected, setWsConnected] = useState(false);
   const [ttsPlaying, setTtsPlaying] = useState(false);
   const [feedback, setFeedback] = useState<QuestionScore|null>(null);
@@ -190,16 +191,27 @@ function SessionContent() {
 
   const processAudio=async()=>{
     if(timerRef.current){clearInterval(timerRef.current);timerRef.current=null;}
-    const time=timer;setRecordedTime(time);  // 保存录音时长
-    if(chunksRef.current.length===0){setTranscript(liveTextRef.current);setPhase('review');return;}
-    setPhase('transcribing');
+    const time=timer;setRecordedTime(time);
+    // 先用浏览器实时识别结果，立即进入 review
+    const browserText=liveTextRef.current;
+    setTranscript(browserText);
+    if(chunksRef.current.length===0){setPhase('review');return;}
+    // 后台用 FunASR 精转（不阻塞界面），结果不同才更新
+    setAsrLoading(true);
+    setPhase('review');  // 立即进入 review，不显示转圈
     try{
       const blob=new Blob(chunksRef.current,{type:'audio/webm'});
       const buf=await blob.arrayBuffer();
       const r=await api.post<{text:string}>(`/api/interview/${interviewId}/transcribe`,buf);
-      setTranscript(r?.text||liveTextRef.current||'');
-    }catch{setTranscript(liveTextRef.current);}
-    setPhase('review');
+      const asrText=r?.text||'';
+      // 只有 FunASR 结果明显不同时才替换
+      if(asrText&&asrText!==browserText&&asrText.length>browserText.length*0.5){
+        setTranscript(asrText);
+      }else if(!browserText&&asrText){
+        setTranscript(asrText);
+      }
+    }catch{}  // 失败静默，保留浏览器结果
+    setAsrLoading(false);
   };
 
   const stopRecording=useCallback(()=>{
