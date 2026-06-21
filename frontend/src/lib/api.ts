@@ -1,11 +1,5 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
-interface ApiResponse<T = any> {
-  code: number;
-  data: T;
-  message: string;
-}
-
 class ApiError extends Error {
   code: number;
   constructor(message: string, code: number) {
@@ -20,8 +14,10 @@ async function request<T>(
 ): Promise<T> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
 
+  // FormData 不能手动设 Content-Type，让浏览器自动设置 boundary
+  const isFormData = options.body instanceof FormData;
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
     ...(options.headers as Record<string, string>),
   };
 
@@ -34,23 +30,60 @@ async function request<T>(
     headers,
   });
 
-  const json: ApiResponse<T> = await res.json();
+  // 204 No Content 无响应体
+  if (res.status === 204) {
+    return undefined as unknown as T;
+  }
 
-  if (!res.ok || json.code !== 0) {
+  const json = await res.json();
+
+  if (!res.ok) {
     if (res.status === 401) {
       localStorage.removeItem('access_token');
       window.location.href = '/login';
     }
-    throw new ApiError(json.message || 'Request failed', json.code);
+    throw new ApiError(json.message || json.detail || 'Request failed', res.status);
   }
 
-  return json.data;
+  // 兼容两种响应格式：统一格式 {code, data, message} 或直接返回数据
+  if (json.code !== undefined) {
+    if (json.code !== 0) {
+      throw new ApiError(json.message || 'Request failed', json.code);
+    }
+    return json.data as T;
+  }
+
+  // 没有 code 字段时，整个响应体就是 data
+  return json as T;
+}
+
+async function downloadBlob(endpoint: string): Promise<{ blob: Blob; filename: string }> {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
+  const res = await fetch(`${API_BASE}${endpoint}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) {
+    if (res.status === 401) {
+      localStorage.removeItem('access_token');
+      window.location.href = '/login';
+    }
+    throw new ApiError('Download failed', res.status);
+  }
+  const disposition = res.headers.get('Content-Disposition') || '';
+  const match = disposition.match(/filename="?(.+?)"?$/);
+  const filename = match ? match[1] : 'download';
+  const blob = await res.blob();
+  return { blob, filename };
 }
 
 export const api = {
   get: <T>(endpoint: string) => request<T>(endpoint),
   post: <T>(endpoint: string, data?: any) =>
     request<T>(endpoint, { method: 'POST', body: JSON.stringify(data) }),
+  put: <T>(endpoint: string, data?: any) =>
+    request<T>(endpoint, { method: 'PUT', body: JSON.stringify(data) }),
+  del: <T>(endpoint: string) =>
+    request<T>(endpoint, { method: 'DELETE' }),
   upload: <T>(endpoint: string, formData: FormData) => {
     const token = localStorage.getItem('access_token');
     return request<T>(endpoint, {
@@ -59,6 +92,7 @@ export const api = {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
   },
+  downloadBlob,
 };
 
 export { ApiError };

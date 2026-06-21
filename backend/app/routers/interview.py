@@ -2,9 +2,11 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.models.user import User
 from app.models.interview import Interview
+from app.models.interview_question import InterviewQuestion
 from app.models.resume import Resume
 from app.models.job_description import JobDescription
 from app.schemas.interview import (
@@ -68,7 +70,7 @@ async def create_interview(
         difficulty=data.difficulty,
     )
 
-    return _interview_to_response(interview)
+    return await _interview_to_response(interview, db)
 
 
 @router.get("/{interview_id}", response_model=InterviewResponse)
@@ -78,12 +80,14 @@ async def get_interview(
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        select(Interview).where(Interview.id == interview_id, Interview.user_id == current_user.id)
+        select(Interview)
+        .where(Interview.id == interview_id, Interview.user_id == current_user.id)
+        .options(selectinload(Interview.questions))
     )
     interview = result.scalar_one_or_none()
     if not interview:
         raise HTTPException(status_code=404, detail="Interview not found")
-    return _interview_to_response(interview)
+    return await _interview_to_response(interview, db)
 
 
 @router.post("/{interview_id}/start", response_model=InterviewResponse)
@@ -92,14 +96,13 @@ async def start_interview(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    # 验证面试归属
     result = await db.execute(
         select(Interview).where(Interview.id == interview_id, Interview.user_id == current_user.id)
     )
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Interview not found")
     interview = await InterviewEngine.start_interview(db, interview_id)
-    return _interview_to_response(interview)
+    return await _interview_to_response(interview, db)
 
 
 @router.get("/{interview_id}/next-question/{index}", response_model=QuestionItem)
@@ -148,7 +151,6 @@ async def complete_interview(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    # 验证面试归属
     result = await db.execute(
         select(Interview).where(Interview.id == interview_id, Interview.user_id == current_user.id)
     )
@@ -160,8 +162,8 @@ async def complete_interview(
         from app.services.scoring_service import run_full_scoring
         interview = await run_full_scoring(db, interview_id)
     except Exception:
-        pass  # 评分失败不阻断流程
-    return _interview_to_response(interview)
+        pass
+    return await _interview_to_response(interview, db)
 
 
 @router.post("/{interview_id}/rescore", response_model=InterviewResponse)
@@ -172,17 +174,25 @@ async def rescore_interview(
 ):
     from app.services.scoring_service import run_full_scoring
     interview = await run_full_scoring(db, interview_id)
-    return _interview_to_response(interview)
+    return await _interview_to_response(interview, db)
 
 
-def _interview_to_response(interview: Interview) -> InterviewResponse:
+async def _interview_to_response(interview: Interview, db: AsyncSession) -> InterviewResponse:
+    # 主动查询 questions，避免 MissingGreenlet 懒加载问题
+    q_result = await db.execute(
+        select(InterviewQuestion)
+        .where(InterviewQuestion.interview_id == interview.id)
+        .order_by(InterviewQuestion.order_index)
+    )
+    db_questions = q_result.scalars().all()
+
     questions = [
         QuestionItem(
             order_index=q.order_index,
             question_text=q.question_text,
             question_type=q.question_type,
         )
-        for q in sorted(interview.questions or [], key=lambda x: x.order_index)
+        for q in db_questions
     ]
     return InterviewResponse(
         id=str(interview.id),

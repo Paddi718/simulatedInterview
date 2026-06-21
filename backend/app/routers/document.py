@@ -54,5 +54,11 @@ async def download_document(
     settings = get_settings()
     filepath = await generate_document(db, interview_id, fmt, settings.document_storage_path)
 
+    import os
     media_type_map = {"md": "text/markdown", "html": "text/html", "pdf": "application/pdf"}
-    return FileResponse(filepath, media_type=media_type_map.get(fmt, "application/octet-stream"))
+    filename = os.path.basename(filepath)
+    return FileResponse(
+        filepath,
+        media_type=media_type_map.get(fmt, "application/octet-stream"),
+        filename=filename,
+    )

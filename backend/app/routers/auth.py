@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.database import get_db
 from app.models.user import User
-from app.schemas.auth import UserCreate, UserLogin, TokenResponse, UserResponse
+from app.schemas.auth import UserCreate, UserLogin, TokenResponse, UserResponse, UpdateUserRequest
 from app.utils.auth import hash_password, verify_password, create_access_token, get_current_user
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -27,6 +27,7 @@ async def register(data: UserCreate, db: AsyncSession = Depends(get_db)):
             id=str(user.id),
             username=user.username,
             email=user.email,
+            tts_preference=user.tts_preference,
             created_at=user.created_at.isoformat(),
         ),
     )
@@ -46,6 +47,7 @@ async def login(data: UserLogin, db: AsyncSession = Depends(get_db)):
             id=str(user.id),
             username=user.username,
             email=user.email,
+            tts_preference=user.tts_preference,
             created_at=user.created_at.isoformat(),
         ),
     )
@@ -57,5 +59,25 @@ async def get_me(current_user: User = Depends(get_current_user)):
         id=str(current_user.id),
         username=current_user.username,
         email=current_user.email,
+        tts_preference=current_user.tts_preference,
+        created_at=current_user.created_at.isoformat(),
+    )
+
+
+@router.put("/me", response_model=UserResponse)
+async def update_me(
+    data: UpdateUserRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if data.tts_preference is not None:
+        current_user.tts_preference = data.tts_preference
+    await db.commit()
+    await db.refresh(current_user)
+    return UserResponse(
+        id=str(current_user.id),
+        username=current_user.username,
+        email=current_user.email,
+        tts_preference=current_user.tts_preference,
         created_at=current_user.created_at.isoformat(),
     )

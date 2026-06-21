@@ -38,9 +38,16 @@ export default function SettingsPage() {
     });
   }, []);
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    // 同时保存到 localStorage（离线兜底）和后端（跨设备同步）
     localStorage.setItem('tts_voice', voice);
     localStorage.setItem('tts_speed', String(speed));
+    try {
+      await api.put('/api/auth/me', { tts_preference: { voice, speed } });
+    } catch (err) {
+      // 后端保存失败不影响本地使用，仅静默失败
+      console.warn('Failed to sync TTS preference to server:', err);
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };

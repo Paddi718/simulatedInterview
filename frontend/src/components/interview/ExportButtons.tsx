@@ -13,8 +13,19 @@ export default function ExportButtons({ interviewId }: ExportButtonsProps) {
   const handleExport = async (fmt: string) => {
     setLoading(fmt);
     try {
+      // 1. POST 触发生成文档（服务端验证权限 + 生成文件）
       await api.post(`/api/interview/${interviewId}/document/${fmt}`);
-      window.open(`http://localhost:8000/api/interview/${interviewId}/document/${fmt}`, '_blank');
+      // 2. GET 下载文件（携带 auth token，通过 api.downloadBlob）
+      const { blob, filename } = await api.downloadBlob(`/api/interview/${interviewId}/document/${fmt}`);
+      // 3. 触发浏览器下载
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
     } catch (err: any) {
       alert('导出失败：' + err.message);
     } finally {

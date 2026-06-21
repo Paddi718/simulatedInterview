@@ -46,8 +46,15 @@ class InterviewEngine:
             db.add(question)
 
         await db.commit()
-        await db.refresh(interview)
-        return interview
+
+        # 用 selectinload 预加载 questions，避免后续懒加载触发 MissingGreenlet
+        from sqlalchemy.orm import selectinload
+        result = await db.execute(
+            select(Interview)
+            .where(Interview.id == interview.id)
+            .options(selectinload(Interview.questions))
+        )
+        return result.scalar_one()
 
     @staticmethod
     async def start_interview(db: AsyncSession, interview_id: uuid.UUID) -> Interview:

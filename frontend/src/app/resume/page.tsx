@@ -40,7 +40,7 @@ export default function ResumePage() {
   const handleDelete = async (id: string) => {
     if (!confirm('确定删除这份简历？')) return;
     try {
-      await api.get(`/api/resume/${id}`);
+      await api.del(`/api/resume/${id}`);
       loadResumes();
     } catch (err) {
       console.error('Failed to delete:', err);

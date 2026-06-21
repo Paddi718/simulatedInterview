@@ -15,10 +15,15 @@ class UserResponse(BaseModel):
     id: str
     username: str
     email: str | None = None
+    tts_preference: dict | None = None
     created_at: str
 
     class Config:
         from_attributes = True
+
+
+class UpdateUserRequest(BaseModel):
+    tts_preference: dict | None = None
 
 
 class TokenResponse(BaseModel):
