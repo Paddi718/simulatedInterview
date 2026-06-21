@@ -1,5 +1,6 @@
 import json
-from app.services.llm_client import llm_chat
+from app.services.llm_client import llm_chat, _clean_json
+from app.prompts import load_prompt
 
 
 async def generate_questions(
@@ -8,40 +9,22 @@ async def generate_questions(
     difficulty: str = "mid",
     total_count: int = 10,
 ) -> list[dict]:
-    """根据简历和 JD 生成面试题目"""
+    """根据简历和 JD 生成面试题目（提示词从 YAML 加载）"""
 
-    prompt = f"""你是一位专业的面试官。请基于以下简历和岗位要求，生成 {total_count} 道面试题。
-
-难度级别: {difficulty}
-
-题目类型分配:
-- 自我介绍(1题): 要求结合简历和岗位进行自我介绍
-- 行为面试(3题): 深挖简历中的项目/工作经历
-- 专业技能(3题): 针对 JD 中的技术要求考察
-- 情景题(2题): 基于 JD 职责设计的场景
-- 职业规划(1题): 评估求职动机和匹配度
-
-简历(结构化):
-{json.dumps(resume_data, ensure_ascii=False, indent=2)}
-
-岗位要求:
-{json.dumps(jd_data, ensure_ascii=False, indent=2)}
-
-输出 JSON 数组:
-[
-  {{
-    "question_text": "题目内容",
-    "question_type": "behavioral|technical|situational|career|introduction",
-    "examine_point": "考察点说明"
-  }}
-]
-
-只输出 JSON 数组。"""
+    system, prompt, temp = load_prompt(
+        "generate_questions",
+        total_count=total_count,
+        difficulty=difficulty,
+        resume_data_json=resume_data,
+        jd_data_json=jd_data,
+    )
 
     result = await llm_chat([
-        {"role": "system", "content": "你是一位资深的专业面试官。请根据简历和JD生成针对性面试题。用中文回答。必须只输出JSON数组。"},
+        {"role": "system", "content": system},
         {"role": "user", "content": prompt},
-    ])
+    ], temperature=temp)
+
+    result = _clean_json(result)
 
     # 尝试多种 JSON 解析方式（兼容不同 LLM 输出格式）
     result = result.strip()

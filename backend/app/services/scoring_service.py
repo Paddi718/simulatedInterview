@@ -15,44 +15,27 @@ async def score_question(
     resume_data: dict,
     jd_data: dict,
 ) -> dict:
-    """对单道面试题进行评分"""
+    """对单道面试题进行评分（提示词从 YAML 加载）"""
+
+    from app.prompts import load_prompt
+    from app.services.llm_client import _clean_json
 
     answer_text = (question.user_answer_transcript or "").strip()
+    common_vars = {
+        "jd_data_json": jd_data,
+        "resume_data_json": resume_data,
+        "question_text": question.question_text,
+        "question_type": question.question_type,
+    }
 
-    # 空回答或标记为未回答的，仍调用 LLM 生成参考答案
+    # 空回答：生成参考答案
     if not answer_text or answer_text == "（未回答）":
-        answer_text = "（未作答）"
-        prompt = f"""你是一位专业的面试官。面试者未回答以下题目，请基于简历和岗位要求生成参考答案。
-
-岗位要求：{json.dumps(jd_data, ensure_ascii=False, indent=2)}
-面试者简历：{json.dumps(resume_data, ensure_ascii=False, indent=2)}
-
-题目类型：{question.question_type}
-题目：{question.question_text}
-
-请结合简历和岗位要求，给出一道有针对性、具体的参考答案，并给出改进建议。
-
-输出 JSON 格式：
-{{
-  "content_completeness": 0,
-  "professionalism": 0,
-  "expression": 0,
-  "star_method": 0,
-  "total_score": 0,
-  "evaluation": "本题未作答。以下是该题的参考答案，请学习参考。",
-  "reference_answer": "结合岗位要求和简历背景的具体参考答案...",
-  "improvement_suggestion": "具体的改进建议"
-}}
-
-只输出 JSON。"""
+        system, prompt, temp = load_prompt("score_question_unanswered", **common_vars)
         result = await llm_chat([
-            {"role": "system", "content": "你是一位面试官。面试者跳过了这道题，请基于简历和岗位要求生成有针对性的参考答案。必须只输出JSON。"},
+            {"role": "system", "content": system},
             {"role": "user", "content": prompt},
-        ], temperature=0.5)
-        result = result.strip()
-        if result.startswith("```"): result = result.split("\n", 1)[1]
-        if result.endswith("```"): result = result[:-3]
-        scores = json.loads(result)
+        ], temperature=temp)
+        scores = json.loads(_clean_json(result))
         scores["content_completeness"] = 0
         scores["professionalism"] = 0
         scores["expression"] = 0
@@ -60,57 +43,17 @@ async def score_question(
         scores["total_score"] = 0
         return scores
 
-    prompt = f"""你是一位严格的专业面试评分官。请对以下面试者的回答进行客观评分。
-
-岗位要求：{json.dumps(jd_data, ensure_ascii=False, indent=2)}
-面试者简历：{json.dumps(resume_data, ensure_ascii=False, indent=2)}
-
-题目：{question.question_text}
-题目类型：{question.question_type}
-面试者回答：{answer_text}
-
-请从以下 4 个维度严格评分（百分制，0-100），并给出评语和参考答案：
-
-1. 内容完整性：回答是否覆盖关键点，是否切题
-2. 专业度：体现的领域知识深度和准确性
-3. 表达能力：逻辑清晰度、语言组织、自信度
-4. STAR 法则：行为题是否按 Situation-Task-Action-Result 组织（非行为题给 50 基准分）
-
-评分为严格模式（strict mode）：
-- 0-30：回答非常差，完全不对题
-- 31-50：回答较差，缺少关键内容
-- 51-70：回答一般，基本切题但深度不足
-- 71-85：回答良好，覆盖大部分要点
-- 86-100：回答优秀，全面深入
-
-输出 JSON 格式（不要照抄示例分数，根据实际回答质量给分）：
-{{
-  "content_completeness": 0,
-  "professionalism": 0,
-  "expression": 0,
-  "star_method": 0,
-  "total_score": 0,
-  "evaluation": "针对本次回答的详细评语",
-  "reference_answer": "该题的参考答案",
-  "improvement_suggestion": "具体的改进建议"
-}}
-
-只输出 JSON。"""
-
+    # 正常回答：严格评分
+    system, prompt, temp = load_prompt(
+        "score_question_answered",
+        answer_text=answer_text,
+        **common_vars,
+    )
     result = await llm_chat([
-        {"role": "system", "content": "你是一位严格公正的面试评分官。根据回答质量客观评分，不虚高。用中文回答。必须只输出JSON，不要有其他内容。"},
+        {"role": "system", "content": system},
         {"role": "user", "content": prompt},
-    ], temperature=0.1)
-
-    # 清理可能的 markdown fence
-    result = result.strip()
-    if result.startswith("```"):
-        lines = result.split("\n")
-        result = "\n".join(lines[1:])
-        if result.endswith("```"):
-            result = result[:-3]
-    scores = json.loads(result)
-    return scores
+    ], temperature=temp)
+    return json.loads(_clean_json(result))
 
 
 def _compute_aggregate_scores(questions: list[InterviewQuestion]) -> dict:
@@ -140,22 +83,23 @@ async def generate_interview_overview(
     resume_data: dict,
     jd_data: dict,
 ) -> dict:
-    """生成面试总评和简历优化建议（仅文字，不含分数计算）"""
+    """生成面试总评和简历优化建议（提示词从 YAML 加载）"""
+
+    from app.prompts import load_prompt
+    from app.services.llm_client import _clean_json
 
     answered = sum(1 for q in questions if q.user_answer_transcript and q.user_answer_transcript.strip() != "（未回答）")
     total = len(questions)
 
-    # 精简 prompt：只传各题摘要（题号+题目+分数+类型），不传完整回答和 JD/简历
-    q_summary = []
-    for q in questions:
-        q_summary.append({
-            "题号": q.order_index,
-            "题目": q.question_text[:80],
-            "类型": q.question_type,
-            "得分": q.ai_score or 0,
-        })
+    # 题目摘要
+    q_summary = [{
+        "题号": q.order_index,
+        "题目": q.question_text[:80],
+        "类型": q.question_type,
+        "得分": q.ai_score or 0,
+    } for q in questions]
 
-    # 简历关键信息摘要（只传关键字段）
+    # 简历摘要
     resume_brief = {}
     if resume_data:
         basic = resume_data.get("basic", {})
@@ -168,45 +112,22 @@ async def generate_interview_overview(
                 f"{e.get('company','')} {e.get('role','')}" for e in exps[:3]
             ]
 
-    prompt = f"""你是一位资深面试官。请基于以下面试数据生成总评报告。
+    position = jd_data.get('position', '') if isinstance(jd_data, dict) else ''
 
-面试概况：共 {total} 题，实际回答 {answered} 题。
-
-各题得分：
-{json.dumps(q_summary, ensure_ascii=False, indent=1)}
-
-候选人背景：{json.dumps(resume_brief, ensure_ascii=False)}
-
-岗位核心要求：{json.dumps(jd_data.get('position', '') if isinstance(jd_data, dict) else '', ensure_ascii=False)}
-
-请输出：
-- overview: 面试总评（150字以内）。如果大部分题未回答，指出态度问题。
-- strengths: 1-2个优势（全未回答写"无"）
-- weaknesses: 1-2个待改进点
-- resume_suggestions: 简历优化建议（100字以内）
-
-输出 JSON：
-{{
-  "overview": "总评...",
-  "strengths": ["优势"],
-  "weaknesses": ["改进点"],
-  "resume_suggestions": "简历建议"
-}}
-
-只输出 JSON。"""
+    system, prompt, temp = load_prompt(
+        "generate_overview",
+        total=total,
+        answered=answered,
+        q_summary_json=q_summary,
+        resume_brief_json=resume_brief,
+        position=position,
+    )
 
     result = await llm_chat([
-        {"role": "system", "content": "你是一位资深面试总评官。客观公正，用中文回答。必须只输出JSON。"},
+        {"role": "system", "content": system},
         {"role": "user", "content": prompt},
-    ], temperature=0.1)
-
-    result = result.strip()
-    if result.startswith("```"):
-        lines = result.split("\n")
-        result = "\n".join(lines[1:])
-        if result.endswith("```"):
-            result = result[:-3]
-    return json.loads(result)
+    ], temperature=temp)
+    return json.loads(_clean_json(result))
 
 
 async def run_full_scoring(db: AsyncSession, interview_id: uuid.UUID) -> Interview:

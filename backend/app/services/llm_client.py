@@ -2,34 +2,44 @@ import json
 from typing import Optional
 import httpx
 from app.config import get_settings
+from app.prompts import load_prompt
 
 settings = get_settings()
 
-SYSTEM_PROMPT = "You are a helpful assistant. Always respond in Chinese. Output only valid JSON when requested."
+
+def _clean_json(result: str) -> str:
+    """清理 LLM 返回的 JSON：去除 markdown fence"""
+    result = result.strip()
+    if result.startswith("```"):
+        lines = result.split("\n")
+        result = "\n".join(lines[1:])
+        if result.endswith("```"):
+            result = result[:-3]
+    return result.strip()
 
 
 async def llm_chat(
     messages: list[dict],
     response_format: Optional[dict] = None,
     temperature: float = 0.7,
+    api_key: Optional[str] = None,
+    api_base: Optional[str] = None,
+    model: Optional[str] = None,
 ) -> str:
-    """调用 LLM API 获取回复"""
+    """调用 LLM API 获取回复。支持用户自定义 API 配置。"""
     headers = {
-        "Authorization": f"Bearer {settings.llm_api_key}",
+        "Authorization": f"Bearer {api_key or settings.llm_api_key}",
         "Content-Type": "application/json",
     }
     payload = {
-        "model": settings.llm_model,
+        "model": model or settings.llm_model,
         "messages": messages,
         "temperature": temperature,
     }
-    # DeepSeek 不支持 json_object 格式，改用 prompt 中指示
-    # if response_format:
-    #     payload["response_format"] = response_format
 
     async with httpx.AsyncClient(timeout=120.0) as client:
         resp = await client.post(
-            f"{settings.llm_api_base}/chat/completions",
+            f"{api_base or settings.llm_api_base}/chat/completions",
             headers=headers,
             json=payload,
         )
@@ -38,59 +48,20 @@ async def llm_chat(
 
 
 async def llm_parse(text: str) -> dict:
-    """LLM 解析简历"""
-    prompt = f"""请从以下简历文本中提取结构化信息，输出 JSON 格式：
-{{
-  "basic": {{"name": str, "education": [{{"school": str, "degree": str, "major": str, "period": str}}]}},
-  "experience": [{{"company": str, "role": str, "period": str, "description": str, "tech_stack": [str], "highlights": [str]}}],
-  "projects": [{{"name": str, "description": str, "role": str, "highlights": [str]}}],
-  "skills": [str],
-  "certifications": [str],
-  "self_evaluation": str
-}}
-
-简历文本：
-{text[:15000]}
-
-只输出 JSON。"""
+    """LLM 解析简历（提示词从 YAML 加载）"""
+    system, prompt, temp = load_prompt("resume_parse", text=text[:15000])
     result = await llm_chat([
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": system},
         {"role": "user", "content": prompt},
-    ])
-    result = result.strip()
-    if result.startswith("```"):
-        lines = result.split("\n")
-        result = "\n".join(lines[1:])
-        if result.endswith("```"):
-            result = result[:-3]
-    return json.loads(result)
+    ], temperature=temp)
+    return json.loads(_clean_json(result))
 
 
 async def llm_parse_jd(text: str) -> dict:
-    """LLM 解析 JD"""
-    prompt = f"""请从以下岗位介绍中提取结构化信息，输出 JSON 格式：
-{{
-  "company_info": str,
-  "position": str,
-  "key_responsibilities": [str],
-  "requirements": [str],
-  "preferred": [str],
-  "team_culture": str,
-  "salary_range": str
-}}
-
-JD 文本：
-{text[:8000]}
-
-只输出 JSON。"""
+    """LLM 解析 JD（提示词从 YAML 加载）"""
+    system, prompt, temp = load_prompt("jd_parse", text=text[:8000])
     result = await llm_chat([
-        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "system", "content": system},
         {"role": "user", "content": prompt},
-    ])
-    result = result.strip()
-    if result.startswith("```"):
-        lines = result.split("\n")
-        result = "\n".join(lines[1:])
-        if result.endswith("```"):
-            result = result[:-3]
-    return json.loads(result)
+    ], temperature=temp)
+    return json.loads(_clean_json(result))
