@@ -84,7 +84,7 @@ export default function SettingsPage() {
     <div className="max-w-2xl mx-auto py-8 px-4">
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold">设置</h1>
-        <Link href="/dashboard" className="text-blue-600 hover:underline">← 返回</Link>
+        <Link href="/dashboard" className="text-brand-500 hover:underline">← 返回</Link>
       </div>
 
       {user && (
@@ -118,11 +118,11 @@ export default function SettingsPage() {
                   <p className="text-xs text-gray-400">进入每题时 AI 面试官自动朗读题目</p>
                 </div>
                 <button onClick={() => setAutoRead(!autoRead)}
-                  className={`relative w-11 h-6 rounded-full transition-colors ${autoRead ? 'bg-blue-600' : 'bg-gray-300'}`}>
+                  className={`relative w-11 h-6 rounded-full transition-colors ${autoRead ? 'bg-brand-500' : 'bg-gray-300'}`}>
                   <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${autoRead ? 'translate-x-5' : ''}`} />
                 </button>
               </div>
-              <button onClick={handleSave} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+              <button onClick={handleSave} className="px-4 py-2 bg-brand-500 text-white rounded-lg hover:bg-brand-600">
                 {saved ? '已保存 ✓' : '保存设置'}
               </button>
             </div>
@@ -161,7 +161,7 @@ export default function SettingsPage() {
                   className="w-full px-3 py-2 border rounded-lg font-mono text-sm" />
               </div>
               <div className="flex gap-3">
-                <button onClick={handleSaveApi} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm">
+                <button onClick={handleSaveApi} className="px-4 py-2 bg-brand-500 text-white rounded-lg hover:bg-brand-600 text-sm">
                   {savedApi ? '已保存 ✓' : '保存 API 配置'}
                 </button>
                 <button onClick={handleTestConnection} disabled={testing}

@@ -40,11 +40,11 @@ export default function Sidebar() {
   const sidebarContent = (
     <div className="flex h-full flex-col">
       {/* Logo */}
-      <div className="flex h-14 items-center gap-3 px-5 border-b border-gray-100 dark:border-gray-800">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 text-white">
-          <Briefcase className="h-4 w-4" />
+      <div className="flex h-14 items-center gap-2.5 px-5 border-b border-gray-100 dark:border-gray-800">
+        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-500 text-white">
+          <Briefcase className="h-3.5 w-3.5" strokeWidth={1.5} />
         </div>
-        <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">
+        <span className="font-semibold text-sm text-gray-900 dark:text-gray-100 tracking-tight">
           AI 模拟面试
         </span>
       </div>
@@ -62,11 +62,11 @@ export default function Sidebar() {
               className={cn(
                 'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
                 active
-                  ? 'bg-blue-50 text-blue-600 dark:bg-blue-950 dark:text-blue-400'
+                  ? 'bg-brand-50 text-brand-500 dark:bg-brand-950 dark:text-brand-400'
                   : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800'
               )}
             >
-              <Icon className="h-4 w-4 shrink-0" />
+              <Icon className="h-4 w-4 shrink-0" strokeWidth={1.5} />
               <span>{item.label}</span>
             </Link>
           )
@@ -81,9 +81,9 @@ export default function Sidebar() {
           className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
         >
           {theme === 'dark' ? (
-            <Sun className="h-4 w-4 shrink-0" />
+            <Sun className="h-4 w-4 shrink-0" strokeWidth={1.5} />
           ) : (
-            <Moon className="h-4 w-4 shrink-0" />
+            <Moon className="h-4 w-4 shrink-0" strokeWidth={1.5} />
           )}
           <span>{theme === 'dark' ? '浅色模式' : '深色模式'}</span>
         </button>
@@ -102,7 +102,7 @@ export default function Sidebar() {
             className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
             title="退出登录"
           >
-            <LogOut className="h-4 w-4" />
+            <LogOut className="h-4 w-4" strokeWidth={1.5} />
           </button>
         </div>
       </div>

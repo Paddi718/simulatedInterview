@@ -154,7 +154,7 @@ export default function ResultPage() {
           </div>
           <p className="text-gray-900 dark:text-gray-100 font-semibold mb-1">{error || '面试记录不存在'}</p>
           <p className="text-gray-400 dark:text-gray-500 text-sm mb-6">无法加载面试结果，请检查后重试</p>
-          <button onClick={() => router.push('/history')} className="px-5 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-700 transition-all">
+          <button onClick={() => router.push('/history')} className="px-5 py-2.5 bg-brand-500 text-white text-sm font-medium rounded-xl hover:bg-brand-600 transition-all">
             返回历史记录
           </button>
         </div>
@@ -198,14 +198,14 @@ export default function ResultPage() {
 
         {/* ===== Scoring Indicator (generating state) ===== */}
         {scoring && (
-          <div className="flex items-center gap-3 bg-blue-50/80 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900 rounded-2xl px-5 py-3.5 animate-pulse">
+          <div className="flex items-center gap-3 bg-brand-50/80 dark:bg-brand-950/30 border border-brand-100 dark:border-brand-900 rounded-2xl px-5 py-3.5 animate-pulse">
             <div className="relative">
-              <Loader2 className="w-5 h-5 text-blue-600 dark:text-blue-400 animate-spin" />
-              <div className="absolute inset-0 rounded-full bg-blue-400/20 animate-ping" />
+              <Loader2 className="w-5 h-5 text-brand-500 dark:text-brand-400 animate-spin" />
+              <div className="absolute inset-0 rounded-full bg-brand-400/20 animate-ping" />
             </div>
             <div>
-              <p className="text-sm font-medium text-blue-700 dark:text-blue-400">AI 正在生成总评和简历建议</p>
-              <p className="text-xs text-blue-500 dark:text-blue-500 mt-0.5">稍后自动更新，无需刷新页面</p>
+              <p className="text-sm font-medium text-brand-600 dark:text-brand-400">AI 正在生成总评和简历建议</p>
+              <p className="text-xs text-brand-500 dark:text-brand-500 mt-0.5">稍后自动更新，无需刷新页面</p>
             </div>
           </div>
         )}
@@ -222,7 +222,7 @@ export default function ResultPage() {
                   strokeLinecap="round"
                   strokeDasharray={`${2 * Math.PI * 56}`}
                   strokeDashoffset={`${2 * Math.PI * 56 * (1 - (displayScore || 0) / 100)}`}
-                  className="text-blue-500 transition-all duration-1000 ease-out" />
+                  className="text-brand-500 transition-all duration-1000 ease-out" />
               </svg>
               <div className="absolute inset-0 flex flex-col items-center justify-center">
                 <span className="text-4xl font-bold text-gray-900 dark:text-gray-100">
@@ -234,7 +234,7 @@ export default function ResultPage() {
             {/* Score Info */}
             <div className="flex-1 text-center sm:text-left">
               <div className="flex items-center justify-center sm:justify-start gap-2 mb-2">
-                <Award className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                <Award className="w-5 h-5 text-brand-500 dark:text-brand-400" />
                 <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">总体评分</p>
               </div>
               <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
@@ -258,8 +258,8 @@ export default function ResultPage() {
         {(result.dimension_scores && Object.keys(result.dimension_scores).length > 0) ? (
           <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 p-6 sm:p-8">
             <div className="flex items-center gap-2.5 mb-6">
-              <div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-950/50 flex items-center justify-center">
-                <BarChart3 className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+              <div className="w-8 h-8 rounded-lg bg-brand-100 dark:bg-brand-950/50 flex items-center justify-center">
+                <BarChart3 className="w-4 h-4 text-brand-500 dark:text-brand-400" />
               </div>
               <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">各维度评分</h2>
             </div>
@@ -268,8 +268,8 @@ export default function ResultPage() {
         ) : scoredQs.length > 0 ? (
           <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 p-6 sm:p-8">
             <div className="flex items-center gap-2.5 mb-6">
-              <div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-950/50 flex items-center justify-center">
-                <BarChart3 className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+              <div className="w-8 h-8 rounded-lg bg-brand-100 dark:bg-brand-950/50 flex items-center justify-center">
+                <BarChart3 className="w-4 h-4 text-brand-500 dark:text-brand-400" />
               </div>
               <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">各维度评分（基于已答题）</h2>
             </div>
@@ -287,8 +287,8 @@ export default function ResultPage() {
                 const Icon = info.icon;
                 return (
                   <div key={k} className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4 text-center border border-gray-100 dark:border-gray-800">
-                    <div className="w-8 h-8 mx-auto mb-2 rounded-lg bg-blue-100 dark:bg-blue-950/40 flex items-center justify-center">
-                      <Icon className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                    <div className="w-8 h-8 mx-auto mb-2 rounded-lg bg-brand-100 dark:bg-brand-950/40 flex items-center justify-center">
+                      <Icon className="w-4 h-4 text-brand-500 dark:text-brand-400" />
                     </div>
                     <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">{avg}</div>
                     <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{info.label}</div>

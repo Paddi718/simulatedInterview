@@ -141,22 +141,22 @@ export default function PreparePage() {
             <div className="flex flex-col items-center gap-1.5">
               <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold transition-all duration-300 ${
                 s < step
-                  ? 'bg-blue-600 text-white shadow-sm shadow-blue-200'
+                  ? 'bg-brand-500 text-white shadow-sm shadow-brand-200'
                   : s === step
-                  ? 'bg-blue-600 text-white shadow-sm shadow-blue-200 ring-4 ring-blue-100 dark:ring-blue-900'
+                  ? 'bg-brand-500 text-white shadow-sm shadow-brand-200 ring-4 ring-brand-100 dark:ring-brand-900'
                   : 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500'
               }`}>
                 {s < step ? <Check className="w-4 h-4" /> : <span>{s}</span>}
               </div>
               <span className={`text-xs font-medium ${
-                s === step ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400 dark:text-gray-500'
+                s === step ? 'text-brand-500 dark:text-brand-400' : 'text-gray-400 dark:text-gray-500'
               }`}>
                 {labels[i]}
               </span>
             </div>
             {i < 2 && (
               <div className={`w-12 sm:w-20 h-0.5 mx-2 sm:mx-3 mt-[-1.25rem] rounded-full ${
-                s < step ? 'bg-blue-500' : 'bg-gray-200 dark:bg-gray-700'
+                s < step ? 'bg-brand-500' : 'bg-gray-200 dark:bg-gray-700'
               }`} />
             )}
           </div>
@@ -207,18 +207,18 @@ export default function PreparePage() {
                     onClick={() => setSelectedResume(r.id)}
                     className={`rounded-2xl border p-4 cursor-pointer transition-all duration-200 ${
                       selectedResume === r.id
-                        ? 'border-blue-500 bg-blue-50/60 dark:bg-blue-950/30 dark:border-blue-600 shadow-sm shadow-blue-100 dark:shadow-blue-900/20'
+                        ? 'border-brand-500 bg-brand-50/60 dark:bg-brand-950/30 dark:border-brand-500 shadow-sm shadow-brand-100 dark:shadow-brand-900/20'
                         : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-sm'
                     }`}
                   >
                     <div className="flex items-center gap-3.5">
                       <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
                         selectedResume === r.id
-                          ? 'bg-blue-100 dark:bg-blue-900/50'
+                          ? 'bg-brand-100 dark:bg-brand-900/50'
                           : 'bg-gray-100 dark:bg-gray-800'
                       }`}>
                         <FileText className={`w-5 h-5 ${
-                          selectedResume === r.id ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400 dark:text-gray-500'
+                          selectedResume === r.id ? 'text-brand-500 dark:text-brand-400' : 'text-gray-400 dark:text-gray-500'
                         }`} />
                       </div>
                       <div className="flex-1 min-w-0">
@@ -230,7 +230,7 @@ export default function PreparePage() {
                         </p>
                       </div>
                       {selectedResume === r.id && (
-                        <div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center">
+                        <div className="w-6 h-6 rounded-full bg-brand-500 flex items-center justify-center">
                           <Check className="w-3.5 h-3.5 text-white" />
                         </div>
                       )}
@@ -243,13 +243,13 @@ export default function PreparePage() {
             {/* Upload Area */}
             <div className={`relative rounded-2xl border-2 border-dashed p-8 text-center transition-colors ${
               uploadingResume
-                ? 'border-blue-300 bg-blue-50/50 dark:border-blue-700 dark:bg-blue-950/20'
-                : 'border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-700 bg-white dark:bg-gray-900'
+                ? 'border-brand-300 bg-brand-50/50 dark:border-brand-600 dark:bg-brand-950/20'
+                : 'border-gray-200 dark:border-gray-700 hover:border-brand-300 dark:hover:border-brand-600 bg-white dark:bg-gray-900'
             }`}>
               {uploadingResume ? (
                 <div className="flex flex-col items-center gap-3">
-                  <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
-                  <p className="text-sm font-medium text-blue-600 dark:text-blue-400">上传解析中...</p>
+                  <Loader2 className="w-8 h-8 text-brand-500 animate-spin" />
+                  <p className="text-sm font-medium text-brand-500 dark:text-brand-400">上传解析中...</p>
                 </div>
               ) : (
                 <>
@@ -270,7 +270,7 @@ export default function PreparePage() {
                         支持 PDF、DOCX、TXT 格式
                       </p>
                     </div>
-                    <span className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 rounded-xl hover:bg-blue-100 dark:hover:bg-blue-950/60 transition-colors">
+                    <span className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-brand-500 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/40 rounded-xl hover:bg-brand-100 dark:hover:bg-brand-950/60 transition-colors">
                       <Upload className="w-4 h-4" />
                       选择文件
                     </span>
@@ -284,7 +284,7 @@ export default function PreparePage() {
               <button
                 onClick={() => setStep(2)}
                 disabled={!selectedResume}
-                className="inline-flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white font-medium rounded-xl hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm shadow-blue-200 dark:shadow-blue-900"
+                className="inline-flex items-center gap-2 px-6 py-2.5 bg-brand-500 text-white font-medium rounded-xl hover:bg-brand-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm shadow-brand-200 dark:shadow-brand-900"
               >
                 下一步
                 <ChevronRight className="w-4 h-4" />
@@ -310,18 +310,18 @@ export default function PreparePage() {
                     onClick={() => { setSelectedJd(j.id); setJdText(''); }}
                     className={`group rounded-2xl border p-4 cursor-pointer transition-all duration-200 ${
                       selectedJd === j.id
-                        ? 'border-blue-500 bg-blue-50/60 dark:bg-blue-950/30 dark:border-blue-600 shadow-sm shadow-blue-100 dark:shadow-blue-900/20'
+                        ? 'border-brand-500 bg-brand-50/60 dark:bg-brand-950/30 dark:border-brand-500 shadow-sm shadow-brand-100 dark:shadow-brand-900/20'
                         : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-sm'
                     }`}
                   >
                     <div className="flex items-center gap-3.5">
                       <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
                         selectedJd === j.id
-                          ? 'bg-blue-100 dark:bg-blue-900/50'
+                          ? 'bg-brand-100 dark:bg-brand-900/50'
                           : 'bg-gray-100 dark:bg-gray-800'
                       }`}>
                         <ClipboardList className={`w-5 h-5 ${
-                          selectedJd === j.id ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400 dark:text-gray-500'
+                          selectedJd === j.id ? 'text-brand-500 dark:text-brand-400' : 'text-gray-400 dark:text-gray-500'
                         }`} />
                       </div>
                       <div className="flex-1 min-w-0">
@@ -333,7 +333,7 @@ export default function PreparePage() {
                         </p>
                       </div>
                       {selectedJd === j.id && (
-                        <div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center">
+                        <div className="w-6 h-6 rounded-full bg-brand-500 flex items-center justify-center">
                           <Check className="w-3.5 h-3.5 text-white" />
                         </div>
                       )}
@@ -356,7 +356,7 @@ export default function PreparePage() {
             )}
 
             {/* JD Textarea */}
-            <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden transition-all focus-within:border-blue-400 dark:focus-within:border-blue-600 focus-within:shadow-sm">
+            <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden transition-all focus-within:border-brand-400 dark:focus-within:border-brand-500 focus-within:shadow-sm">
               <textarea
                 value={jdText}
                 onChange={(e) => { setJdText(e.target.value); if (e.target.value) setSelectedJd(''); }}
@@ -367,7 +367,7 @@ export default function PreparePage() {
                 <button
                   onClick={handleCreateJd}
                   disabled={!jdText.trim() || creatingJd}
-                  className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 disabled:text-gray-300 dark:disabled:text-gray-600 disabled:cursor-not-allowed transition-colors"
+                  className="text-xs font-medium text-brand-500 dark:text-brand-400 hover:text-brand-600 disabled:text-gray-300 dark:disabled:text-gray-600 disabled:cursor-not-allowed transition-colors"
                 >
                   {creatingJd ? '保存中...' : '保存为岗位模板'}
                 </button>
@@ -389,7 +389,7 @@ export default function PreparePage() {
               <button
                 onClick={() => setStep(3)}
                 disabled={!selectedJd && !jdText.trim()}
-                className="inline-flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white font-medium rounded-xl hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm shadow-blue-200 dark:shadow-blue-900"
+                className="inline-flex items-center gap-2 px-6 py-2.5 bg-brand-500 text-white font-medium rounded-xl hover:bg-brand-600 disabled:opacity-40 disabled:cursor-not-allowed transition-all shadow-sm shadow-brand-200 dark:shadow-brand-900"
               >
                 下一步
                 <ChevronRight className="w-4 h-4" />
@@ -417,25 +417,25 @@ export default function PreparePage() {
                     onClick={() => !loading && setDifficulty(opt.value)}
                     className={`rounded-2xl border p-5 cursor-pointer transition-all duration-200 ${
                       isActive
-                        ? 'border-blue-500 bg-blue-50/60 dark:bg-blue-950/30 dark:border-blue-600 shadow-sm shadow-blue-100 dark:shadow-blue-900/20'
+                        ? 'border-brand-500 bg-brand-50/60 dark:bg-brand-950/30 dark:border-brand-500 shadow-sm shadow-brand-100 dark:shadow-brand-900/20'
                         : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-sm'
                     }`}
                   >
                     <div className="flex items-center gap-4">
                       <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${
                         isActive
-                          ? 'bg-blue-100 dark:bg-blue-900/50'
+                          ? 'bg-brand-100 dark:bg-brand-900/50'
                           : 'bg-gray-100 dark:bg-gray-800'
                       }`}>
                         <Icon className={`w-5 h-5 ${
-                          isActive ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400 dark:text-gray-500'
+                          isActive ? 'text-brand-500 dark:text-brand-400' : 'text-gray-400 dark:text-gray-500'
                         }`} />
                       </div>
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
                           <p className="font-semibold text-gray-900 dark:text-gray-100">{opt.label}</p>
                           {isActive && (
-                            <div className="w-5 h-5 rounded-full bg-blue-600 flex items-center justify-center">
+                            <div className="w-5 h-5 rounded-full bg-brand-500 flex items-center justify-center">
                               <Check className="w-3 h-3 text-white" />
                             </div>
                           )}
@@ -461,7 +461,7 @@ export default function PreparePage() {
               <button
                 onClick={handleStart}
                 disabled={loading}
-                className="inline-flex items-center gap-2 px-6 py-2.5 bg-blue-600 text-white font-medium rounded-xl hover:bg-blue-700 disabled:opacity-50 transition-all shadow-sm shadow-blue-200 dark:shadow-blue-900"
+                className="inline-flex items-center gap-2 px-6 py-2.5 bg-brand-500 text-white font-medium rounded-xl hover:bg-brand-600 disabled:opacity-50 transition-all shadow-sm shadow-brand-200 dark:shadow-brand-900"
               >
                 {loading ? (
                   <>
@@ -484,8 +484,8 @@ export default function PreparePage() {
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/70 dark:bg-gray-950/80 backdrop-blur-md">
             <div className="bg-white dark:bg-gray-900 rounded-3xl shadow-modal p-10 text-center max-w-sm mx-4 animate-fade-in border border-gray-100 dark:border-gray-800">
               <div className="w-16 h-16 mx-auto mb-5 relative">
-                <div className="absolute inset-0 rounded-full bg-blue-100 dark:bg-blue-950 animate-ping opacity-30" />
-                <div className="relative w-16 h-16 rounded-full bg-blue-600 flex items-center justify-center">
+                <div className="absolute inset-0 rounded-full bg-brand-100 dark:bg-brand-950 animate-ping opacity-30" />
+                <div className="relative w-16 h-16 rounded-full bg-brand-500 flex items-center justify-center">
                   <Loader2 className="w-7 h-7 text-white animate-spin" />
                 </div>
               </div>

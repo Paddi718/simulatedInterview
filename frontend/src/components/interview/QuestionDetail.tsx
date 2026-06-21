@@ -78,7 +78,7 @@ export default function QuestionDetail({ question }: QuestionDetailProps) {
         </div>
         <div className="flex items-center gap-3 flex-shrink-0 ml-3">
           {question.ai_score != null && (
-            <span className="text-lg font-bold text-blue-600 dark:text-blue-400 tabular-nums">
+            <span className="text-lg font-bold text-brand-500 dark:text-brand-400 tabular-nums">
               {question.ai_score}
             </span>
           )}
@@ -163,7 +163,7 @@ export default function QuestionDetail({ question }: QuestionDetailProps) {
                 <Sparkles className="w-3.5 h-3.5" />
                 AI 评语
               </h4>
-              <div className="pl-3 border-l-2 border-blue-400 dark:border-blue-600">
+              <div className="pl-3 border-l-2 border-brand-400 dark:border-brand-500">
                 <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
                   {question.ai_evaluation}
                 </p>

@@ -33,27 +33,27 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen">
       {/* Left Brand Side - hidden on mobile */}
-      <div className="hidden md:flex md:w-1/2 bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 items-center justify-center p-12 relative overflow-hidden">
+      <div className="hidden md:flex md:w-1/2 bg-gradient-to-br from-brand-500 via-brand-600 to-indigo-800 items-center justify-center p-12 relative overflow-hidden">
         <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wNSI+PGNpcmNsZSBjeD0iMzAiIGN5PSIzMCIgcj0iMiIvPjwvZz48L2c+PC9zdmc+')] opacity-50" />
         <div className="relative z-10 text-center">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-white/10 backdrop-blur-sm mb-8">
             <Sparkles className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-4xl font-bold text-white mb-4">AI 模拟面试</h1>
-          <p className="text-xl text-blue-100/80 max-w-md">
+          <p className="text-xl text-brand-100/80 max-w-md">
             智能语音面试 &middot; AI 即时评分 &middot; 专业报告导出
           </p>
           <div className="mt-12 flex flex-col gap-4 max-w-sm mx-auto">
-            <div className="flex items-center gap-3 text-blue-100/70">
-              <div className="w-8 h-0.5 bg-blue-400/30 rounded-full shrink-0" />
+            <div className="flex items-center gap-3 text-brand-100/70">
+              <div className="w-8 h-0.5 bg-brand-400/30 rounded-full shrink-0" />
               <span className="text-sm">真实场景模拟面试体验</span>
             </div>
-            <div className="flex items-center gap-3 text-blue-100/70">
-              <div className="w-8 h-0.5 bg-blue-400/30 rounded-full shrink-0" />
+            <div className="flex items-center gap-3 text-brand-100/70">
+              <div className="w-8 h-0.5 bg-brand-400/30 rounded-full shrink-0" />
               <span className="text-sm">AI 驱动的智能评分系统</span>
             </div>
-            <div className="flex items-center gap-3 text-blue-100/70">
-              <div className="w-8 h-0.5 bg-blue-400/30 rounded-full shrink-0" />
+            <div className="flex items-center gap-3 text-brand-100/70">
+              <div className="w-8 h-0.5 bg-brand-400/30 rounded-full shrink-0" />
               <span className="text-sm">专业面试报告一键导出</span>
             </div>
           </div>
@@ -85,7 +85,7 @@ export default function LoginPage() {
                   type="text"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                  className="w-full pl-10 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all duration-200"
                   placeholder="请输入用户名"
                   autoComplete="username"
                   required
@@ -103,7 +103,7 @@ export default function LoginPage() {
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-10 pr-10 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                  className="w-full pl-10 pr-10 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all duration-200"
                   placeholder="请输入密码"
                   autoComplete="current-password"
                   required
@@ -125,7 +125,7 @@ export default function LoginPage() {
               disabled={loading}
               className={cn(
                 'w-full py-2.5 px-4 rounded-xl font-medium text-white transition-all duration-200',
-                'bg-blue-600 hover:bg-blue-700 active:bg-blue-800',
+                'bg-brand-500 hover:bg-brand-600 active:bg-brand-800',
                 'shadow-sm hover:shadow-md',
                 'disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-sm',
                 'flex items-center justify-center gap-2'
@@ -146,7 +146,7 @@ export default function LoginPage() {
             还没有账号？{' '}
             <Link
               href="/register"
-              className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 font-medium transition-colors"
+              className="text-brand-500 hover:text-brand-600 dark:text-brand-400 dark:hover:text-brand-300 font-medium transition-colors"
             >
               立即注册
             </Link>

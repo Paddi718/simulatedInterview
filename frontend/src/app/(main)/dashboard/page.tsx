@@ -122,7 +122,7 @@ export default function DashboardPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-950">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        <Loader2 className="w-8 h-8 animate-spin text-brand-500" />
       </div>
     );
   }
@@ -136,7 +136,7 @@ export default function DashboardPage() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-lg bg-brand-500 flex items-center justify-center">
                 <Briefcase className="w-4 h-4 text-white" />
               </div>
               <span className="font-semibold text-gray-900 dark:text-gray-100">
@@ -171,8 +171,8 @@ export default function DashboardPage() {
         {/* Stats Row */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
           <div className="bg-white dark:bg-gray-900 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-gray-800 transition-all duration-200 hover:shadow-md">
-            <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center mb-4">
-              <Briefcase className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            <div className="w-10 h-10 rounded-xl bg-brand-50 dark:bg-brand-900/30 flex items-center justify-center mb-4">
+              <Briefcase className="w-5 h-5 text-brand-500 dark:text-brand-400" />
             </div>
             <p className="text-3xl font-bold text-gray-900 dark:text-gray-100">
               {totalInterviews}
@@ -202,16 +202,16 @@ export default function DashboardPage() {
         </div>
 
         {/* Quick Action - Prominent CTA */}
-        <div className="bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 rounded-2xl p-8 shadow-sm mb-8 relative overflow-hidden">
+        <div className="bg-gradient-to-br from-brand-500 via-brand-600 to-indigo-800 rounded-2xl p-8 shadow-sm mb-8 relative overflow-hidden">
           <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wNSI+PGNpcmNsZSBjeD0iMzAiIGN5PSIzMCIgcj0iMiIvPjwvZz48L2c+PC9zdmc+')] opacity-50" />
           <div className="relative z-10">
             <h2 className="text-xl font-bold text-white mb-2">准备好开始面试了吗？</h2>
-            <p className="text-blue-100/80 mb-6 max-w-lg">
+            <p className="text-brand-100/80 mb-6 max-w-lg">
               选择岗位类型和面试难度，AI 将为你生成真实的面试场景，帮助你快速提升面试技巧。
             </p>
             <Link
               href="/interview/prepare"
-              className="inline-flex items-center gap-2 px-6 py-3 bg-white text-blue-700 rounded-xl font-medium hover:bg-blue-50 transition-all duration-200 shadow-lg hover:shadow-xl"
+              className="inline-flex items-center gap-2 px-6 py-3 bg-white text-brand-600 rounded-xl font-medium hover:bg-brand-50 transition-all duration-200 shadow-lg hover:shadow-xl"
             >
               <PlayCircle className="w-5 h-5" />
               开始新面试

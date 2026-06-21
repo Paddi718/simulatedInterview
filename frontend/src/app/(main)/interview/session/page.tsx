@@ -47,7 +47,7 @@ const DIM_LABELS: Record<string, string> = {
   expression: '表达能力', star_method: 'STAR法则',
 };
 const DIM_COLORS: Record<string, string> = {
-  content_completeness: 'border-t-blue-400 dark:border-t-blue-600',
+  content_completeness: 'border-t-brand-400 dark:border-t-brand-500',
   professionalism: 'border-t-purple-400 dark:border-t-purple-600',
   expression: 'border-t-amber-400 dark:border-t-amber-600',
   star_method: 'border-t-emerald-400 dark:border-t-emerald-600',
@@ -74,7 +74,7 @@ function createSR(): any {
 function Spinner({ label, white }: { label: string; white?: boolean }) {
   return (
     <div className="flex flex-col items-center gap-4 py-10">
-      <Loader2 className={`w-8 h-8 animate-spin ${white ? 'text-white' : 'text-blue-600 dark:text-blue-400'}`} />
+      <Loader2 className={`w-8 h-8 animate-spin ${white ? 'text-white' : 'text-brand-500 dark:text-brand-400'}`} />
       <p className={`text-sm ${white ? 'text-white/80' : 'text-gray-500 dark:text-gray-400'}`}>{label}</p>
     </div>
   );
@@ -308,7 +308,7 @@ function SessionContent() {
     return (
       <div className="min-h-screen bg-gray-50/50 dark:bg-gray-950 flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <Loader2 className="w-8 h-8 text-blue-600 dark:text-blue-400 animate-spin" />
+          <Loader2 className="w-8 h-8 text-brand-500 dark:text-brand-400 animate-spin" />
           <p className="text-sm text-gray-400 dark:text-gray-500">加载面试信息...</p>
         </div>
       </div>
@@ -325,7 +325,7 @@ function SessionContent() {
           </div>
           <p className="text-gray-900 dark:text-gray-100 font-semibold mb-1">加载失败</p>
           <p className="text-sm text-gray-400 dark:text-gray-500 mb-6">{error}</p>
-          <Link href="/dashboard" className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-700 transition-all">
+          <Link href="/dashboard" className="inline-flex items-center gap-2 px-5 py-2.5 bg-brand-500 text-white text-sm font-medium rounded-xl hover:bg-brand-600 transition-all">
             <ChevronLeft className="w-4 h-4" />
             返回首页
           </Link>
@@ -344,7 +344,7 @@ function SessionContent() {
           </div>
           <p className="text-gray-900 dark:text-gray-100 font-semibold mb-1">暂无题目</p>
           <p className="text-sm text-gray-400 dark:text-gray-500 mb-6">面试题目尚未生成</p>
-          <Link href="/dashboard" className="inline-flex items-center gap-2 px-5 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-700 transition-all">
+          <Link href="/dashboard" className="inline-flex items-center gap-2 px-5 py-2.5 bg-brand-500 text-white text-sm font-medium rounded-xl hover:bg-brand-600 transition-all">
             <ChevronLeft className="w-4 h-4" />
             返回首页
           </Link>
@@ -382,7 +382,7 @@ function SessionContent() {
         <div className="mb-6">
           <div className="flex items-center justify-between mb-2.5">
             <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-              第 <span className="text-blue-600 dark:text-blue-400 font-bold tabular-nums">{currentIndex+1}</span> / {total} 题
+              第 <span className="text-brand-500 dark:text-brand-400 font-bold tabular-nums">{currentIndex+1}</span> / {total} 题
             </span>
             <div className="flex items-center gap-3">
               {showTimer && (phase==='review'||phase==='scoring'||phase==='feedback') && (
@@ -396,7 +396,7 @@ function SessionContent() {
           </div>
           <div className="w-full h-1 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
             <div
-              className="h-full bg-gradient-to-r from-blue-500 to-blue-600 dark:from-blue-600 dark:to-blue-400 rounded-full transition-all duration-500 ease-out"
+              className="h-full bg-gradient-to-r from-brand-500 to-brand-500 dark:from-brand-500 dark:to-brand-400 rounded-full transition-all duration-500 ease-out"
               style={{width:`${progress}%`}}
             />
           </div>
@@ -448,10 +448,10 @@ function SessionContent() {
                 )}
                 <p className="text-sm text-gray-400 dark:text-gray-500">准备好后，点击下方按钮开始录音回答</p>
                 <div className="relative">
-                  <div className="absolute inset-0 rounded-full bg-blue-100 dark:bg-blue-950/50 animate-pulse opacity-50" />
+                  <div className="absolute inset-0 rounded-full bg-brand-100 dark:bg-brand-950/50 animate-pulse opacity-50" />
                   <button onClick={startRecording}
-                    className="relative w-28 h-28 rounded-full bg-white dark:bg-gray-800 border-2 border-dashed border-blue-300 dark:border-blue-700 hover:border-blue-500 dark:hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-all flex items-center justify-center group shadow-sm">
-                    <Mic className="w-12 h-12 text-blue-500 dark:text-blue-400 group-hover:scale-105 transition-transform" />
+                    className="relative w-28 h-28 rounded-full bg-white dark:bg-gray-800 border-2 border-dashed border-brand-300 dark:border-brand-600 hover:border-brand-500 dark:hover:border-brand-500 hover:bg-brand-50 dark:hover:bg-brand-950/30 transition-all flex items-center justify-center group shadow-sm">
+                    <Mic className="w-12 h-12 text-brand-500 dark:text-brand-400 group-hover:scale-105 transition-transform" />
                   </button>
                 </div>
                 <button onClick={handleSkip}
@@ -489,10 +489,10 @@ function SessionContent() {
                 </p>
 
                 {/* Live transcription — DOM ref 直接更新避免高频重渲染 */}
-                <div className={`w-full bg-blue-50/80 dark:bg-blue-950/30 rounded-2xl p-4 border border-blue-100 dark:border-blue-900 max-h-36 overflow-y-auto ${liveText?'':'hidden'}`}>
+                <div className={`w-full bg-brand-50/80 dark:bg-brand-950/30 rounded-2xl p-4 border border-brand-100 dark:border-brand-900 max-h-36 overflow-y-auto ${liveText?'':'hidden'}`}>
                   <div className="flex items-center gap-1.5 mb-2">
-                    <Mic className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" />
-                    <p className="text-xs font-medium text-blue-500 dark:text-blue-400">实时转写</p>
+                    <Mic className="w-3.5 h-3.5 text-brand-500 dark:text-brand-400" />
+                    <p className="text-xs font-medium text-brand-500 dark:text-brand-400">实时转写</p>
                   </div>
                   <p ref={liveTextElRef} className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{liveText}</p>
                 </div>
@@ -538,12 +538,12 @@ function SessionContent() {
                 </div>
                 <div className="flex flex-col sm:flex-row gap-3">
                   <button onClick={()=>submitAnswer(displayText,false)}
-                    className="flex-1 inline-flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 text-white font-medium rounded-xl hover:bg-blue-700 transition-all shadow-sm shadow-blue-200 dark:shadow-blue-900">
+                    className="flex-1 inline-flex items-center justify-center gap-2 px-6 py-3 bg-brand-500 text-white font-medium rounded-xl hover:bg-brand-600 transition-all shadow-sm shadow-brand-200 dark:shadow-brand-900">
                     <Send className="w-4 h-4" />
                     提交回答
                   </button>
                   <button onClick={startRecording}
-                    className="inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-xl hover:bg-blue-100 dark:hover:bg-blue-950/60 transition-all">
+                    className="inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-medium text-brand-500 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/40 border border-brand-200 dark:border-brand-800 rounded-xl hover:bg-brand-100 dark:hover:bg-brand-950/60 transition-all">
                     <RotateCcw className="w-4 h-4" />
                     重新录音
                   </button>
@@ -591,7 +591,7 @@ function SessionContent() {
                         strokeLinecap="round"
                         strokeDasharray={`${2 * Math.PI * 40}`}
                         strokeDashoffset={`${2 * Math.PI * 40 * (1 - feedback.total_score / 100)}`}
-                        className="text-blue-500 transition-all duration-1000 ease-out" />
+                        className="text-brand-500 transition-all duration-1000 ease-out" />
                     </svg>
                     <div className="absolute inset-0 flex items-center justify-center">
                       <span className="text-3xl font-bold text-gray-900 dark:text-gray-100">{feedback.total_score}</span>
@@ -622,10 +622,10 @@ function SessionContent() {
                 {feedback.evaluation&&(
                   <div>
                     <label className="flex items-center gap-1.5 text-sm font-medium text-gray-600 dark:text-gray-400 mb-2.5">
-                      <Sparkles className="w-4 h-4 text-blue-500" />
+                      <Sparkles className="w-4 h-4 text-brand-500" />
                       评语
                     </label>
-                    <div className="pl-4 border-l-2 border-blue-400 dark:border-blue-600">
+                    <div className="pl-4 border-l-2 border-brand-400 dark:border-brand-500">
                       <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{feedback.evaluation}</p>
                     </div>
                   </div>
@@ -659,7 +659,7 @@ function SessionContent() {
 
                 {/* Next button */}
                 <button onClick={moveToNextOrComplete}
-                  className="w-full inline-flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 text-white font-medium rounded-xl hover:bg-blue-700 transition-all shadow-sm shadow-blue-200 dark:shadow-blue-900">
+                  className="w-full inline-flex items-center justify-center gap-2 px-6 py-3 bg-brand-500 text-white font-medium rounded-xl hover:bg-brand-600 transition-all shadow-sm shadow-brand-200 dark:shadow-brand-900">
                   {currentIndex<questions.length-1 ? (
                     <>下一题 <ChevronRight className="w-4 h-4" /></>
                   ) : (
@@ -696,7 +696,7 @@ function SessionContent() {
                 再看看
               </button>
               <button onClick={handleComplete} disabled={completing}
-                className="flex-1 px-5 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-60 transition-all shadow-sm shadow-blue-200 dark:shadow-blue-900 flex items-center justify-center gap-2">
+                className="flex-1 px-5 py-2.5 text-sm font-medium text-white bg-brand-500 rounded-xl hover:bg-brand-600 disabled:opacity-60 transition-all shadow-sm shadow-brand-200 dark:shadow-brand-900 flex items-center justify-center gap-2">
                 {completing?<><Loader2 className="w-4 h-4 animate-spin"/>生成报告中…</>:'完成面试'}
               </button>
             </div>
@@ -711,7 +711,7 @@ export default function SessionPage() {
   return (
     <Suspense fallback={
       <div className="min-h-screen bg-gray-50/50 dark:bg-gray-950 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-blue-600 dark:text-blue-400 animate-spin" />
+        <Loader2 className="w-8 h-8 text-brand-500 dark:text-brand-400 animate-spin" />
       </div>
     }>
       <SessionContent />

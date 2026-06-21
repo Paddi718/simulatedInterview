@@ -30,8 +30,8 @@ interface Resume {
 
 const fileIconColors: Record<string, string> = {
   pdf: 'text-red-500 dark:text-red-400',
-  docx: 'text-blue-500 dark:text-blue-400',
-  doc: 'text-blue-500 dark:text-blue-400',
+  docx: 'text-brand-500 dark:text-brand-400',
+  doc: 'text-brand-500 dark:text-brand-400',
   txt: 'text-gray-500 dark:text-gray-400',
 };
 
@@ -264,8 +264,8 @@ export default function ResumePage() {
         {uploading ? (
           <div className="mb-6 bg-white dark:bg-gray-900/80 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 p-6">
             <div className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center">
-                <Loader2 className="h-5 w-5 text-blue-500 dark:text-blue-400 animate-spin" />
+              <div className="w-10 h-10 rounded-xl bg-brand-50 dark:bg-brand-900/30 flex items-center justify-center">
+                <Loader2 className="h-5 w-5 text-brand-500 dark:text-brand-400 animate-spin" />
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
@@ -273,7 +273,7 @@ export default function ResumePage() {
                 </p>
                 <div className="mt-2 w-full h-2 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-blue-500 rounded-full transition-all duration-300 ease-out"
+                    className="h-full bg-brand-500 rounded-full transition-all duration-300 ease-out"
                     style={{ width: `${uploadProgress}%` }}
                   />
                 </div>
@@ -294,7 +294,7 @@ export default function ResumePage() {
               transition-all duration-200
               ${
                 dragOver
-                  ? 'border-blue-400 bg-blue-50/50 dark:border-blue-500 dark:bg-blue-900/20'
+                  ? 'border-brand-400 bg-brand-50/50 dark:border-brand-500 dark:bg-brand-900/20'
                   : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/60 hover:border-gray-300 dark:hover:border-gray-700 hover:bg-gray-50/50 dark:hover:bg-gray-900/80'
               }
             `}

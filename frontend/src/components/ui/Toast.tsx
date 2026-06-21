@@ -18,7 +18,7 @@ const toastVariants = cva(
         error:
           "border-red-200 bg-red-50 text-red-900 dark:border-red-800 dark:bg-red-950/80 dark:text-red-200",
         info:
-          "border-blue-200 bg-blue-50 text-blue-900 dark:border-blue-800 dark:bg-blue-950/80 dark:text-blue-200",
+          "border-brand-200 bg-brand-50 text-brand-900 dark:border-brand-800 dark:bg-brand-950/80 dark:text-brand-200",
       },
     },
     defaultVariants: {
@@ -138,7 +138,7 @@ function ToastItem({ id, title, description, variant, onDismiss }: ToastItemProp
           </ToastPrimitive.Description>
         )}
       </div>
-      <ToastPrimitive.Close className="shrink-0 rounded-md p-1 text-current opacity-50 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+      <ToastPrimitive.Close className="shrink-0 rounded-md p-1 text-current opacity-50 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-brand-500">
         <X className="h-4 w-4" />
       </ToastPrimitive.Close>
     </ToastPrimitive.Root>

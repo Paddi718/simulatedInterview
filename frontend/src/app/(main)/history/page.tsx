@@ -284,7 +284,7 @@ export default function HistoryPage() {
                     {/* Right: score or status */}
                     <div className="flex items-center gap-2 shrink-0">
                       {r.total_score != null ? (
-                        <span className="text-xl font-bold tracking-tight text-blue-600 dark:text-blue-400">
+                        <span className="text-xl font-bold tracking-tight text-brand-500 dark:text-brand-400">
                           {r.total_score}
                           <span className="text-xs font-normal text-gray-400 dark:text-gray-500 ml-0.5">分</span>
                         </span>
