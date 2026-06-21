@@ -403,7 +403,7 @@ function SessionContent() {
             <p className="text-sm text-gray-500 mb-6">你已回答全部 {total} 道题目。⏱ 总耗时 {formatTime(totalTimeRef.current)}</p>
             <div className="flex gap-3">
               <button onClick={()=>setShowConfirm(false)} disabled={completing} className="flex-1 px-5 py-2.5 text-sm font-medium text-gray-600 bg-gray-100 rounded-xl hover:bg-gray-200 disabled:opacity-50">再看看</button>
-              <button onClick={handleComplete} disabled={completing} className="flex-1 px-5 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-60 flex items-center justify-center gap-2">{completing?<><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"/>提交中…</>:'完成面试'}</button>
+              <button onClick={handleComplete} disabled={completing} className="flex-1 px-5 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-60 flex items-center justify-center gap-2">{completing?<><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"/>生成报告中…</>:'完成面试'}</button>
             </div>
           </div>
         </div>

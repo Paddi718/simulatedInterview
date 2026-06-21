@@ -198,8 +198,10 @@ async def run_full_scoring(db: AsyncSession, interview_id: uuid.UUID) -> Intervi
     jd = j_result.scalar_one_or_none()
     jd_data = jd.parsed_data if jd else {}
 
-    # 逐题评分（包括空回答也给0分）
+    # 逐题评分 — 跳过已评分的题（面试过程中每题提交时已评）
     for question in questions:
+        if question.ai_score is not None:
+            continue  # 已评分，跳过
         scores = await score_question(question, resume_data, jd_data)
         question.ai_score = scores.get("total_score", 0)
         question.score_detail = {k: v for k, v in scores.items()
@@ -209,7 +211,7 @@ async def run_full_scoring(db: AsyncSession, interview_id: uuid.UUID) -> Intervi
         question.reference_answer = scores.get("reference_answer", "")
         question.improvement_suggestion = scores.get("improvement_suggestion", "")
 
-    # 面试总评
+    # 面试总评（只调一次 LLM）
     overview = await generate_interview_overview(interview, questions, resume_data, jd_data)
 
     interview.total_score = overview.get("dimension_scores", {}).get("total_score", 0)
