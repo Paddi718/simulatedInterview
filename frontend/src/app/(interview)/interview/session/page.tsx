@@ -14,6 +14,7 @@ import { api } from '@/lib/api';
 interface Question {
   order_index: number; question_text: string;
   question_type: 'introduction' | 'behavioral' | 'technical' | 'situational' | 'career';
+  user_answer_transcript?: string|null;
 }
 interface QuestionScore {
   order_index: number; total_score: number;
@@ -171,13 +172,12 @@ function SessionContent() {
   const loadInterview=useCallback(async()=>{
     if(!interviewId){router.push('/dashboard');return;}
     try{setLoading(true);setError('');
-      type QWithAnswer = Question & {user_answer_transcript?:string|null};
-      const d=await api.get<{questions:QWithAnswer[];status:string}>(`/api/interview/${interviewId}`);
+      const d=await api.get<{questions:Question[];status:string}>(`/api/interview/${interviewId}`);
       if(d.status==='preparing')await api.post(`/api/interview/${interviewId}/start`);
       const qs = d.questions||[];
       setQuestions(qs);
-      // 续答：跳到第一个未回答的题目
-      const firstUnanswered = qs.findIndex((q:QWithAnswer) => !q.user_answer_transcript);
+      // 续答：跳到第一个未回答的题目（已有回答的不再进入）
+      const firstUnanswered = qs.findIndex(q => !q.user_answer_transcript);
       if(firstUnanswered>=0)setCurrentIndex(firstUnanswered);
     }catch(e:any){setError(e.message||'加载失败');}finally{setLoading(false);}
   },[interviewId,router]);
@@ -291,20 +291,29 @@ function SessionContent() {
       setPhase('review');
       return;
     }
+    // 本地标记已答，续答时跳过此题
+    setQuestions(prev => prev.map((q, i) => i === currentIndex ? {...q, user_answer_transcript: answerText} : q));
     moveToNextOrComplete();
   },[interviewId,currentIndex,questions,recordedTime]);
 
   const moveToNextOrComplete=useCallback(()=>{
     try{(window as any).speechSynthesis?.cancel();}catch{}
-    if(currentIndex<questions.length-1){
-      setCurrentIndex(i=>i+1);setPhase('question');setTranscript('');setLiveText('');setTimer(0);setRecordedTime(0);setFeedback(null);
+    // 找下一道未回答的题目（跳过已答的）
+    let next = currentIndex + 1;
+    while(next < questions.length){
+      const q = questions[next] as any;
+      if(!q.user_answer_transcript) break;
+      next++;
+    }
+    if(next < questions.length){
+      setCurrentIndex(next);setPhase('question');setTranscript('');setLiveText('');setTimer(0);setRecordedTime(0);setFeedback(null);
       // 立即启动思考计时器，避免 useEffect 延迟导致的闪烁
       if(thinkingRef.current){clearInterval(thinkingRef.current);}
       thinkingValueRef.current=0;setThinkingTime(0);setFinalThinkingTime(0);
       thinkingRef.current=setInterval(()=>{const v=thinkingValueRef.current+1;thinkingValueRef.current=v;setThinkingTime(v);},1000);
     }
     else setShowConfirm(true);
-  },[currentIndex,questions.length]);
+  },[currentIndex,questions]);
 
   const handleSkip=useCallback(()=>{if(phase==='scoring'||phase==='submitting')return;if(phase==='recording')stopRecording();setTimeout(()=>submitAnswer('',true),300);},[phase,stopRecording,submitAnswer]);
   const handleComplete=useCallback(async()=>{if(!interviewId||completing)return;setCompleting(true);try{await api.post(`/api/interview/${interviewId}/complete`);router.push(`/interview/result/${interviewId}`);}catch{setCompleting(false);setError('完成失败');}},[interviewId,completing,router]);
