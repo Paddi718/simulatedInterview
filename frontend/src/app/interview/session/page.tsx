@@ -171,11 +171,17 @@ function SessionContent() {
       const stream=await navigator.mediaDevices.getUserMedia({audio:true});streamRef.current=stream;
       if(SR){speechRef.current=SR;
         SR.onresult=(e:any)=>{
-          // 只取本次新增的结果（resultIndex 标记了新结果的起始位置）
-          let newText='';
-          for(let i=e.resultIndex;i<e.results.length;i++)newText+=e.results[i][0].transcript;
-          liveTextRef.current+=newText;
-          setLiveText(liveTextRef.current);
+          // 分离：已确定(追加) vs 暂定(仅预览)
+          for(let i=e.resultIndex;i<e.results.length;i++){
+            const r=e.results[i];
+            if(r.isFinal)liveTextRef.current+=r[0].transcript;
+          }
+          // 显示 = 确定文本 + 当前暂定文本
+          let interim='';
+          for(let i=0;i<e.results.length;i++){
+            if(!e.results[i].isFinal)interim+=e.results[i][0].transcript;
+          }
+          setLiveText(liveTextRef.current+interim);
         };
         SR.onerror=(e:any)=>{if(e.error!=='no-speech'&&e.error!=='aborted')console.warn('SR error:',e.error);};
         SR.onend=()=>{};
