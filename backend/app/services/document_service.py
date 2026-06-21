@@ -58,13 +58,31 @@ def _build_html(interview: Interview, questions: list[InterviewQuestion]) -> str
 
 
 def _build_pdf(interview: Interview, questions: list[InterviewQuestion]) -> bytes:
-    """生成 PDF 格式报告"""
+    """生成 PDF 格式报告
+    优先用 weasyprint，失败则返回 HTML（浏览器可直接打开 .html 文件）
+    """
     html = _build_html(interview, questions)
+
+    # 检测 fontconfig（weasyprint 依赖）
+    import shutil
+    if not shutil.which('fc-list'):
+        # 无 fontconfig → 直接返回 HTML，避免卡死
+        return html.encode('utf-8')
+
     try:
         from weasyprint import HTML
-        return HTML(string=html).write_pdf()
     except Exception:
-        # Fallback: return HTML as bytes if weasyprint fails
+        return html.encode('utf-8')
+
+    def _render():
+        return HTML(string=html).write_pdf()
+
+    try:
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_render)
+            return future.result(timeout=15)
+    except Exception:
         return html.encode('utf-8')
 
 
