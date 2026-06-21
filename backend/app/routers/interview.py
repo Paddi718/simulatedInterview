@@ -160,6 +160,46 @@ async def get_next_question(
     )
 
 
+@router.post("/{interview_id}/score-question")
+async def score_single_question(
+    data: SubmitAnswerRequest,
+    interview_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """REST 接口：单题评分（WebSocket 降级方案）"""
+    from app.services.scoring_service import score_question as do_score
+    from app.models.resume import Resume as RModel
+    from app.models.job_description import JobDescription as JDModel
+    r = await db.execute(select(InterviewQuestion).where(
+        InterviewQuestion.interview_id == interview_id,
+        InterviewQuestion.order_index == data.order_index,
+    ))
+    question = r.scalar_one_or_none()
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+    i = (await db.execute(select(Interview).where(Interview.id == interview_id))).scalar_one_or_none()
+    resume_data, jd_data = {}, {}
+    if i:
+        rr = (await db.execute(select(Resume).where(Resume.id == i.resume_id))).scalar_one_or_none()
+        resume_data = rr.parsed_data if rr else {}
+        jr = (await db.execute(select(JobDescription).where(JobDescription.id == i.jd_id))).scalar_one_or_none()
+        jd_data = jr.parsed_data if jr else {}
+    scores = await do_score(question, resume_data, jd_data)
+    question.ai_score = scores.get("total_score", 0)
+    question.score_detail = {k: v for k, v in scores.items() if k in ["content_completeness", "professionalism", "expression", "star_method"]}
+    question.ai_evaluation = scores.get("evaluation", "")
+    question.reference_answer = scores.get("reference_answer", "")
+    question.improvement_suggestion = scores.get("improvement_suggestion", "")
+    await db.commit()
+    return {
+        "order_index": data.order_index, "total_score": question.ai_score,
+        "dimension_scores": question.score_detail, "evaluation": question.ai_evaluation,
+        "reference_answer": question.reference_answer,
+        "improvement_suggestion": question.improvement_suggestion,
+    }
+
+
 @router.post("/{interview_id}/submit-answer")
 async def submit_answer(
     interview_id: uuid.UUID,
