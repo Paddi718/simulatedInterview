@@ -15,9 +15,11 @@ async function request<T>(
   const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
 
   // FormData 不能手动设 Content-Type，让浏览器自动设置 boundary
+  // 无 body 时不设 Content-Type（避免不必要的 CORS preflight）
   const isFormData = options.body instanceof FormData;
+  const hasBody = options.body != null;
   const headers: Record<string, string> = {
-    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+    ...(isFormData || !hasBody ? {} : { 'Content-Type': 'application/json' }),
     ...(options.headers as Record<string, string>),
   };
 

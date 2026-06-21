@@ -75,7 +75,21 @@ async def delete_interview(
     )
     interview = result.scalar_one_or_none()
     if not interview:
+        # 再查一下是否被用户ID过滤掉了
+        check = await db.execute(select(Interview).where(Interview.id == interview_id))
+        exists = check.scalar_one_or_none()
+        if exists:
+            raise HTTPException(status_code=403, detail="Not your interview")
         raise HTTPException(status_code=404, detail="Interview not found")
+
+    # 先清理关联的面试题目（手动 cascade，确保后台线程不影响）
+    q_result = await db.execute(
+        select(InterviewQuestion).where(InterviewQuestion.interview_id == interview_id)
+    )
+    for q in q_result.scalars().all():
+        await db.delete(q)
+    await db.flush()
+
     await db.delete(interview)
     await db.commit()
     # 清理 SSE 事件
