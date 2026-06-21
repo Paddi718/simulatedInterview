@@ -39,12 +39,44 @@ export default function ResultPage() {
       const data = await api.get<InterviewResult>(`/api/interview/${id}`);
       setResult(data);
       setLoading(false);
-      // 如果总评还没生成，后台轮询
+      // 如果总评还没生成，先用 SSE 实时推送 + 轮询兜底
       if (data.total_score === null && !data.dimension_scores) {
         setScoring(true);
-        pollForScores();
+        startSSE();       // 优先 SSE 推送
+        pollForScores();  // 轮询兜底
       }
     } catch (err: any) { setError(err.message || '加载失败'); setLoading(false); }
+  };
+
+  // SSE: 实时接收总评完成推送（比轮询更快）
+  const startSSE = () => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
+    if (!token) return;
+    const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+    const url = `${apiBase}/api/interview/${id}/stream?token=${encodeURIComponent(token)}`;
+    try {
+      const es = new EventSource(url);
+      es.onmessage = async (e) => {
+        try {
+          const msg = JSON.parse(e.data);
+          if (msg.type === 'overview_ready') {
+            // SSE 推送了完整数据，直接更新
+            setResult((prev) => prev ? {
+              ...prev,
+              total_score: msg.total_score ?? prev.total_score,
+              dimension_scores: msg.dimension_scores ?? prev.dimension_scores,
+              ai_overview: msg.ai_overview ?? prev.ai_overview,
+              resume_suggestions: msg.resume_suggestions ?? prev.resume_suggestions,
+            } : prev);
+            setScoring(false);
+            es.close();
+          } else if (msg.type === 'timeout') {
+            es.close();
+          }
+        } catch { es.close(); }
+      };
+      es.onerror = () => { es.close(); }; // 出错关闭，让轮询接手
+    } catch {} // SSE 不支持时静默失败，轮询接手
   };
 
   const pollForScores = async () => {

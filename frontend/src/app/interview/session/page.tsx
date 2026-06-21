@@ -16,8 +16,8 @@ interface QuestionScore {
   evaluation: string; reference_answer: string; improvement_suggestion: string;
   error?: string;
 }
-// 状态机: question→recording→transcribing→review→scoring→feedback→(next)question
-type Phase = 'question' | 'recording' | 'transcribing' | 'review' | 'scoring' | 'feedback';
+// 状态机: question→recording→transcribing→review→submitting→(next)question
+type Phase = 'question' | 'recording' | 'transcribing' | 'review' | 'submitting' | 'scoring' | 'feedback';
 
 const QUESTION_TYPE_MAP: Record<string, string> = {
   introduction: '自我介绍', behavioral: '行为面试', technical: '专业技能',
@@ -230,14 +230,19 @@ function SessionContent() {
   const submitAnswer=useCallback(async(answerText:string,skip:boolean)=>{
     if(!interviewId)return;
     const q=questions[currentIndex];if(!q)return;
-    setPhase('scoring');
-    try{await api.post(`/api/interview/${interviewId}/submit-answer`,{order_index:q.order_index,answer_transcript:answerText,duration_seconds:skip?0:recordedTime});}
-    catch{setPhase('review');return;}
-    // 用 REST 评分（可靠，不依赖 WS 回调）
+    // 提交答案（后台评分，不阻塞用户）
+    setPhase('submitting');
     try{
-      const res=await api.post<QuestionScore>(`/api/interview/${interviewId}/score-question`,{order_index:q.order_index});
-      if(res&&!(res as any).error){setFeedback(res);setPhase('feedback');return;}
-    }catch{}
+      await api.post(`/api/interview/${interviewId}/submit-answer`,{
+        order_index:q.order_index,
+        answer_transcript:answerText,
+        duration_seconds:skip?0:recordedTime
+      });
+    }catch{
+      setPhase('review');
+      return;
+    }
+    // 立即进入下一题或完成，评分在后端后台线程执行
     moveToNextOrComplete();
   },[interviewId,currentIndex,questions,recordedTime]);
 
@@ -247,7 +252,7 @@ function SessionContent() {
     else setShowConfirm(true);
   },[currentIndex,questions.length]);
 
-  const handleSkip=useCallback(()=>{if(phase==='scoring')return;if(phase==='recording')stopRecording();setTimeout(()=>submitAnswer('',true),300);},[phase,stopRecording,submitAnswer]);
+  const handleSkip=useCallback(()=>{if(phase==='scoring'||phase==='submitting')return;if(phase==='recording')stopRecording();setTimeout(()=>submitAnswer('',true),300);},[phase,stopRecording,submitAnswer]);
   const handleComplete=useCallback(async()=>{if(!interviewId||completing)return;setCompleting(true);try{await api.post(`/api/interview/${interviewId}/complete`);router.push(`/interview/result/${interviewId}`);}catch{setCompleting(false);setError('完成失败');}},[interviewId,completing,router]);
 
   /* ---------- Render ---------- */
@@ -360,10 +365,13 @@ function SessionContent() {
               </div>
             )}
 
-            {/* ---- scoring: LLM evaluating ---- */}
+            {/* ---- submitting: saving answer (fast) ---- */}
+            {phase==='submitting'&&(<Spinner label="正在保存回答…"/> )}
+
+            {/* ---- scoring: LLM evaluating (deprecated — now background) ---- */}
             {phase==='scoring'&&(<Spinner label="AI 正在评分，请稍候…"/> )}
 
-            {/* ---- feedback: results ---- */}
+            {/* ---- feedback: results (deprecated — now shown on result page) ---- */}
             {phase==='feedback'&&feedback&&(
               <div className="flex flex-col gap-5">
                 {/* 耗时信息 */}

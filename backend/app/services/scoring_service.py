@@ -112,58 +112,90 @@ async def score_question(
     return scores
 
 
+def _compute_aggregate_scores(questions: list[InterviewQuestion]) -> dict:
+    """纯算术计算总分和维度平均分，无需 LLM"""
+    scored = [q for q in questions if q.ai_score is not None]
+    if not scored:
+        return {
+            "total_score": 0,
+            "dimension_scores": {
+                "content_completeness": 0, "professionalism": 0,
+                "expression": 0, "star_method": 0,
+            }
+        }
+    n = len(scored)
+    total_score = round(sum(q.ai_score for q in scored) / n)
+    dims = ["content_completeness", "professionalism", "expression", "star_method"]
+    dimension_scores = {}
+    for d in dims:
+        vals = [(q.score_detail or {}).get(d, 0) for q in scored]
+        dimension_scores[d] = round(sum(vals) / n)
+    return {"total_score": total_score, "dimension_scores": dimension_scores}
+
+
 async def generate_interview_overview(
     interview: Interview,
     questions: list[InterviewQuestion],
     resume_data: dict,
     jd_data: dict,
 ) -> dict:
-    """生成面试总评、能力差距分析和简历优化建议"""
+    """生成面试总评和简历优化建议（仅文字，不含分数计算）"""
 
-    # 统计实际回答数
     answered = sum(1 for q in questions if q.user_answer_transcript and q.user_answer_transcript.strip() != "（未回答）")
     total = len(questions)
 
-    prompt = f"""你是一位资深面试官。请基于整场面试（共 {total} 题，实际回答 {answered} 题）生成总评报告。
+    # 精简 prompt：只传各题摘要（题号+题目+分数+类型），不传完整回答和 JD/简历
+    q_summary = []
+    for q in questions:
+        q_summary.append({
+            "题号": q.order_index,
+            "题目": q.question_text[:80],
+            "类型": q.question_type,
+            "得分": q.ai_score or 0,
+        })
 
-岗位要求：{json.dumps(jd_data, ensure_ascii=False, indent=2)}
-面试者简历：{json.dumps(resume_data, ensure_ascii=False, indent=2)}
+    # 简历关键信息摘要（只传关键字段）
+    resume_brief = {}
+    if resume_data:
+        basic = resume_data.get("basic", {})
+        resume_brief["name"] = basic.get("name", "") if isinstance(basic, dict) else ""
+        skills = resume_data.get("skills", [])
+        resume_brief["skills"] = skills[:10] if isinstance(skills, list) else []
+        exps = resume_data.get("experience", [])
+        if isinstance(exps, list):
+            resume_brief["experience_summary"] = [
+                f"{e.get('company','')} {e.get('role','')}" for e in exps[:3]
+            ]
 
-各题评分：
-{json.dumps([{
-    "题号": q.order_index,
-    "题目": q.question_text[:60],
-    "类型": q.question_type,
-    "回答摘要": (q.user_answer_transcript or "(未回答)")[:80],
-    "各维度": q.score_detail or {},
-    "总分": q.ai_score or 0,
-} for q in questions], ensure_ascii=False, indent=2)}
+    prompt = f"""你是一位资深面试官。请基于以下面试数据生成总评报告。
+
+面试概况：共 {total} 题，实际回答 {answered} 题。
+
+各题得分：
+{json.dumps(q_summary, ensure_ascii=False, indent=1)}
+
+候选人背景：{json.dumps(resume_brief, ensure_ascii=False)}
+
+岗位核心要求：{json.dumps(jd_data.get('position', '') if isinstance(jd_data, dict) else '', ensure_ascii=False)}
 
 请输出：
-- overview: 面试总评（200字以内），如果大部分题未回答，应明确指出态度问题
-- dimension_scores: 四个维度的平均分加上 total_score（按实际回答题数计算，未作答的题已经是0分）
-- strengths: 2-3个优势（如果全未回答，写"无"）
-- weaknesses: 2-3个待改进点
-- resume_suggestions: 简历优化建议
+- overview: 面试总评（150字以内）。如果大部分题未回答，指出态度问题。
+- strengths: 1-2个优势（全未回答写"无"）
+- weaknesses: 1-2个待改进点
+- resume_suggestions: 简历优化建议（100字以内）
 
 输出 JSON：
 {{
   "overview": "总评...",
-  "dimension_scores": {{"content_completeness": 0, "professionalism": 0, "expression": 0, "star_method": 0, "total_score": 0}},
   "strengths": ["优势"],
   "weaknesses": ["改进点"],
-  "resume_suggestions": "简历建议",
-  "learning_plan": {{
-    "short_term": ["短期提升"],
-    "medium_term": ["中期提升"],
-    "long_term": ["长期学习"]
-  }}
+  "resume_suggestions": "简历建议"
 }}
 
 只输出 JSON。"""
 
     result = await llm_chat([
-        {"role": "system", "content": "你是一位资深面试总评官。客观公正，根据实际表现评分。用中文回答。必须只输出JSON。"},
+        {"role": "system", "content": "你是一位资深面试总评官。客观公正，用中文回答。必须只输出JSON。"},
         {"role": "user", "content": prompt},
     ], temperature=0.1)
 
@@ -177,7 +209,7 @@ async def generate_interview_overview(
 
 
 async def run_full_scoring(db: AsyncSession, interview_id: uuid.UUID) -> Interview:
-    """完整评分流程：逐题评分 → 面试总评 → 更新数据库"""
+    """完整评分流程：逐题评分 → 算术聚合 → 写入总分数 → LLM总评(仅文字)"""
 
     i_result = await db.execute(select(Interview).where(Interview.id == interview_id))
     interview = i_result.scalar_one_or_none()
@@ -198,27 +230,43 @@ async def run_full_scoring(db: AsyncSession, interview_id: uuid.UUID) -> Intervi
     jd = j_result.scalar_one_or_none()
     jd_data = jd.parsed_data if jd else {}
 
-    # 逐题评分 — 跳过已评分的题（面试过程中每题提交时已评）
+    # Phase 1: 逐题评分（跳过已评分的题）
     for question in questions:
         if question.ai_score is not None:
             continue  # 已评分，跳过
-        scores = await score_question(question, resume_data, jd_data)
-        question.ai_score = scores.get("total_score", 0)
-        question.score_detail = {k: v for k, v in scores.items()
-                                 if k in ["content_completeness", "professionalism",
-                                          "expression", "star_method"]}
-        question.ai_evaluation = scores.get("evaluation", "")
-        question.reference_answer = scores.get("reference_answer", "")
-        question.improvement_suggestion = scores.get("improvement_suggestion", "")
+        try:
+            scores = await score_question(question, resume_data, jd_data)
+            question.ai_score = scores.get("total_score", 0)
+            question.score_detail = {k: v for k, v in scores.items()
+                                     if k in ["content_completeness", "professionalism",
+                                              "expression", "star_method"]}
+            question.ai_evaluation = scores.get("evaluation", "")
+            question.reference_answer = scores.get("reference_answer", "")
+            question.improvement_suggestion = scores.get("improvement_suggestion", "")
+        except Exception as e:
+            print(f"[Scoring] Question {question.order_index} scoring failed: {e}")
+            question.ai_score = 0
+            question.ai_evaluation = f"评分失败: {str(e)[:200]}"
 
-    # 面试总评（只调一次 LLM）
-    overview = await generate_interview_overview(interview, questions, resume_data, jd_data)
-
-    interview.total_score = overview.get("dimension_scores", {}).get("total_score", 0)
-    interview.dimension_scores = overview.get("dimension_scores", {})
-    interview.ai_overview = overview.get("overview", "")
-    interview.resume_suggestions = overview.get("resume_suggestions", "")
-
+    # Phase 2: 纯算术计算总分和维度分，立即写入（不等 LLM）
+    agg = _compute_aggregate_scores(questions)
+    interview.total_score = agg["total_score"]
+    interview.dimension_scores = agg["dimension_scores"]
+    interview.scoring_status = "scoring_overview"
     await db.commit()
+
+    # Phase 3: LLM 生成文字总评（仅 overview + resume_suggestions）
+    try:
+        overview = await generate_interview_overview(interview, questions, resume_data, jd_data)
+        interview.ai_overview = overview.get("overview", "")
+        interview.resume_suggestions = overview.get("resume_suggestions", "")
+        interview.scoring_status = "done"
+        await db.commit()
+    except Exception as e:
+        print(f"[Scoring] Overview generation failed: {e}")
+        interview.ai_overview = f"总评生成失败，请稍后重试。"
+        interview.scoring_status = "failed"
+        await db.commit()
+
     await db.refresh(interview)
     return interview

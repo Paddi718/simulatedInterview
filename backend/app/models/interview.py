@@ -17,6 +17,8 @@ class Interview(Base):
     total_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     dimension_scores: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=None)
     status: Mapped[str] = mapped_column(String(20), default="preparing")
+    scoring_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    # scoring_status: null | "pending" | "scoring_questions" | "scoring_overview" | "done"
     ai_overview: Mapped[str | None] = mapped_column(Text, nullable=True)
     resume_suggestions: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

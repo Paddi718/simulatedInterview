@@ -1,12 +1,14 @@
 import uuid
 import asyncio
+import json
 import tempfile
 import os
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from app.database import get_db
+from app.database import get_db, async_session_factory
 from app.models.user import User
 from app.models.interview import Interview
 from app.models.interview_question import InterviewQuestion
@@ -19,6 +21,10 @@ from app.utils.auth import get_current_user
 from app.services.interview_engine import InterviewEngine
 
 router = APIRouter(prefix="/api/interview", tags=["interview"])
+
+# SSE 事件通知：interview_id → asyncio.Event（用于推送总评完成）
+_sse_events: dict[str, asyncio.Event] = {}
+
 
 
 @router.get("/list")
@@ -214,6 +220,56 @@ async def submit_answer(
         data.answer_transcript,
         duration=data.duration_seconds,
     )
+
+    # 后台评分：不阻塞用户，用独立线程+session评分
+    if data.answer_transcript and data.answer_transcript.strip():
+        import threading
+        _q_id = question.id
+        _i_id = interview_id
+
+        def _bg_score_question():
+            import asyncio
+            async def _run():
+                from app.database import async_session_factory
+                from app.services.scoring_service import score_question as do_score
+                from app.models.resume import Resume as RModel
+                from app.models.job_description import JobDescription as JDModel
+                async with async_session_factory() as bg_db:
+                    try:
+                        qr = await bg_db.execute(
+                            select(InterviewQuestion).where(InterviewQuestion.id == _q_id)
+                        )
+                        q = qr.scalar_one_or_none()
+                        if not q or q.ai_score is not None:
+                            return  # 已评分或不存在
+                        ir = await bg_db.execute(select(Interview).where(Interview.id == _i_id))
+                        i = ir.scalar_one_or_none()
+                        if not i:
+                            return
+                        rr = await bg_db.execute(select(RModel).where(RModel.id == i.resume_id))
+                        resume = rr.scalar_one_or_none()
+                        resume_data = resume.parsed_data if resume else {}
+                        jr = await bg_db.execute(select(JDModel).where(JDModel.id == i.jd_id))
+                        jd = jr.scalar_one_or_none()
+                        jd_data = jd.parsed_data if jd else {}
+                        scores = await do_score(q, resume_data, jd_data)
+                        q.ai_score = scores.get("total_score", 0)
+                        q.score_detail = {
+                            k: v for k, v in scores.items()
+                            if k in ["content_completeness", "professionalism", "expression", "star_method"]
+                        }
+                        q.ai_evaluation = scores.get("evaluation", "")
+                        q.reference_answer = scores.get("reference_answer", "")
+                        q.improvement_suggestion = scores.get("improvement_suggestion", "")
+                        await bg_db.commit()
+                    except Exception as e:
+                        print(f"[BG Score] Question scoring failed: {e}")
+            loop = asyncio.new_event_loop()
+            loop.run_until_complete(_run())
+            loop.close()
+
+        threading.Thread(target=_bg_score_question, daemon=True).start()
+
     return {"code": 0, "data": {"id": str(question.id)}, "message": "ok"}
 
 
@@ -226,9 +282,24 @@ async def complete_interview(
     result = await db.execute(
         select(Interview).where(Interview.id == interview_id, Interview.user_id == current_user.id)
     )
-    if not result.scalar_one_or_none():
+    interview = result.scalar_one_or_none()
+    if not interview:
         raise HTTPException(status_code=404, detail="Interview not found")
+
+    # 幂等保护：如果已在评分或已完成评分，不重复启动
+    if interview.scoring_status in ("scoring_questions", "scoring_overview", "done"):
+        return await _interview_to_response(interview, db)
+
     interview = await InterviewEngine.complete_interview(db, interview_id)
+
+    # 标记评分开始
+    interview.scoring_status = "pending"
+    await db.commit()
+
+    # 创建 SSE 通知事件
+    event = asyncio.Event()
+    _sse_events[str(interview_id)] = event
+    _main_loop = asyncio.get_running_loop()
 
     # 用线程池后台评分，避免 asyncio task 被取消
     import threading
@@ -238,10 +309,34 @@ async def complete_interview(
             from app.database import async_session_factory
             async with async_session_factory() as bg_db:
                 try:
+                    # 更新状态：评分中
+                    ir = await bg_db.execute(select(Interview).where(Interview.id == interview_id))
+                    i = ir.scalar_one_or_none()
+                    if i:
+                        i.scoring_status = "scoring_questions"
+                        await bg_db.commit()
+
                     from app.services.scoring_service import run_full_scoring
                     await run_full_scoring(bg_db, interview_id)
-                except Exception:
-                    pass
+
+                    # 更新状态：完成
+                    ir2 = await bg_db.execute(select(Interview).where(Interview.id == interview_id))
+                    i2 = ir2.scalar_one_or_none()
+                    if i2:
+                        i2.scoring_status = "done"
+                        await bg_db.commit()
+                except Exception as e:
+                    print(f"[Complete] Background scoring failed: {e}")
+                    try:
+                        ir3 = await bg_db.execute(select(Interview).where(Interview.id == interview_id))
+                        i3 = ir3.scalar_one_or_none()
+                        if i3:
+                            i3.scoring_status = "failed"
+                            await bg_db.commit()
+                    except Exception:
+                        pass
+            # 通知 SSE 监听者
+            _main_loop.call_soon_threadsafe(event.set)
         loop = asyncio.new_event_loop()
         loop.run_until_complete(_run())
         loop.close()
@@ -249,6 +344,60 @@ async def complete_interview(
     threading.Thread(target=_bg_score, daemon=True).start()
 
     return await _interview_to_response(interview, db)
+
+
+@router.get("/{interview_id}/stream")
+async def stream_interview_result(
+    interview_id: uuid.UUID,
+    request: Request,
+    token: str = "",
+):
+    """SSE: 实时推送面试总评完成事件。前端 EventSource 监听。
+    EventSource 不支持 Authorization header，token 通过 query string 传递。
+    """
+    # 鉴权：从 query string 或 header 获取 token 并手动解码
+    from jose import JWTError, jwt
+    from app.config import get_settings
+    settings = get_settings()
+    if not token:
+        token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    if not token:
+        from fastapi.responses import Response
+        return Response(status_code=401, headers={"Content-Type": "text/plain"})
+    try:
+        jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+    except JWTError:
+        from fastapi.responses import Response
+        return Response(status_code=401, headers={"Content-Type": "text/plain"})
+
+    sid = str(interview_id)
+    event = _sse_events.get(sid)
+    if not event:
+        event = asyncio.Event()
+        _sse_events[sid] = event
+
+    async def event_generator():
+        try:
+            # 等待 scoring 完成（最多 60s）
+            await asyncio.wait_for(event.wait(), timeout=60.0)
+            # 推送完成事件
+            async with async_session_factory() as s:
+                r = await s.execute(select(Interview).where(Interview.id == interview_id))
+                i = r.scalar_one_or_none()
+                if i and i.ai_overview:
+                    yield f"data: {json.dumps({'type': 'overview_ready', 'total_score': i.total_score, 'dimension_scores': i.dimension_scores, 'ai_overview': i.ai_overview, 'resume_suggestions': i.resume_suggestions})}\n\n"
+                    return
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        except asyncio.TimeoutError:
+            yield f"data: {json.dumps({'type': 'timeout'})}\n\n"
+        finally:
+            _sse_events.pop(sid, None)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.post("/{interview_id}/transcribe")
