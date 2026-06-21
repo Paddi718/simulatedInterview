@@ -115,6 +115,7 @@ function SessionContent() {
   const speechRef = useRef<any>(null);
   const streamRef = useRef<MediaStream|null>(null);
   const liveTextRef = useRef('');
+  const liveTextElRef = useRef<HTMLParagraphElement|null>(null);
 
   useEffect(() => () => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -217,7 +218,10 @@ function SessionContent() {
           for(let i=0;i<e.results.length;i++){
             if(!e.results[i].isFinal)interim+=e.results[i][0].transcript;
           }
-          setLiveText(liveTextRef.current+interim);
+          // 直接写 DOM 避免高频 setState 触发全组件重渲染（新 UI 元素重）
+          const displayText=liveTextRef.current+interim;
+          if(liveTextElRef.current)liveTextElRef.current.textContent=displayText;
+          setLiveText(displayText); // 保持 state 同步（低频用于 UI 条件渲染）
         };
         SR.onerror=(e:any)=>{if(e.error!=='no-speech'&&e.error!=='aborted')console.warn('SR error:',e.error);};
         SR.onend=()=>{};
@@ -484,16 +488,14 @@ function SessionContent() {
                   录音中 · 点击停止
                 </p>
 
-                {/* Live transcription */}
-                {liveText&&(
-                  <div className="w-full bg-blue-50/80 dark:bg-blue-950/30 rounded-2xl p-4 border border-blue-100 dark:border-blue-900 max-h-36 overflow-y-auto">
-                    <div className="flex items-center gap-1.5 mb-2">
-                      <Mic className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" />
-                      <p className="text-xs font-medium text-blue-500 dark:text-blue-400">实时转写</p>
-                    </div>
-                    <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{liveText}</p>
+                {/* Live transcription — DOM ref 直接更新避免高频重渲染 */}
+                <div className={`w-full bg-blue-50/80 dark:bg-blue-950/30 rounded-2xl p-4 border border-blue-100 dark:border-blue-900 max-h-36 overflow-y-auto ${liveText?'':'hidden'}`}>
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <Mic className="w-3.5 h-3.5 text-blue-500 dark:text-blue-400" />
+                    <p className="text-xs font-medium text-blue-500 dark:text-blue-400">实时转写</p>
                   </div>
-                )}
+                  <p ref={liveTextElRef} className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{liveText}</p>
+                </div>
 
                 <button onClick={handleSkip}
                   className="inline-flex items-center gap-1.5 px-6 py-2.5 text-sm text-gray-400 dark:text-gray-500 border border-gray-200 dark:border-gray-700 rounded-xl hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all">
