@@ -11,12 +11,23 @@ from app.config import get_settings
 
 settings = get_settings()
 
-# 模型路径: __file__ = /app/app/services/vad_service.py → 上 3 层到 /app
-VAD_MODEL_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
-    "models", "snakers4_silero-vad"
-)
-VAD_MODEL_PATH = os.path.join(VAD_MODEL_DIR, "src", "silero_vad", "data", "silero_vad.onnx")
+# 模型路径: 适配 Docker (/app/models/) 和本地 (../models/)
+_SERVICE_DIR = os.path.dirname(os.path.abspath(__file__))  # .../backend/app/services
+_BACKEND_DIR = os.path.dirname(os.path.dirname(_SERVICE_DIR))  # .../backend
+_CANDIDATES = [
+    os.path.join(_BACKEND_DIR, "models", "snakers4_silero-vad"),          # Docker: /app/models/...
+    os.path.join(os.path.dirname(_BACKEND_DIR), "models", "snakers4_silero-vad"),  # 本地: ../models/...
+    os.path.join(os.getcwd(), "models", "snakers4_silero-vad"),
+]
+VAD_MODEL_DIR = None
+for _c in _CANDIDATES:
+    _mp = os.path.join(_c, "src", "silero_vad", "data", "silero_vad.onnx")
+    if os.path.exists(_mp):
+        VAD_MODEL_DIR = _c
+        VAD_MODEL_PATH = _mp
+        break
+if VAD_MODEL_DIR is None:
+    VAD_MODEL_PATH = os.path.join(_CANDIDATES[0], "src", "silero_vad", "data", "silero_vad.onnx")
 
 
 class SileroVAD:
