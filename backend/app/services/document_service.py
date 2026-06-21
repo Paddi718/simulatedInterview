@@ -474,25 +474,34 @@ async def generate_document(
         resume = r_result.scalar_one_or_none()
         if resume and resume.parsed_data:
             candidate_name = (resume.parsed_data.get("basic") or {}).get("name", "") or ""
+        # Fallback: use original filename (without extension) as candidate name
+        if not candidate_name and resume:
+            fname = resume.original_filename or ""
+            candidate_name = os.path.splitext(fname)[0] if '.' in fname else fname
         j_result = await db.execute(select(JobDescription).where(JobDescription.id == interview.jd_id))
         jd = j_result.scalar_one_or_none()
         if jd and jd.parsed_data:
             job_position = (jd.parsed_data.get("position") or "").strip()
+        # Fallback: use first line of JD raw text (truncated)
+        if not job_position and jd:
+            raw = (jd.raw_text or "").strip()
+            job_position = raw.split('\n')[0][:30] if raw else ""
     except Exception:
         pass
 
     # Build professional filename: 模拟面试_姓名_岗位_日期.ext
     import re
     date_str = datetime.now().strftime("%Y%m%d")
-    name_part = candidate_name or "候选人"
-    position_part = job_position or "面试岗位"
-    # Sanitize: remove special chars, replace spaces
-    for part in [name_part, position_part]:
-        part = re.sub(r'[\\/:*?"<>|]', '', part).strip()
-    safe_name = re.sub(r'\s+', '', name_part) if name_part else "候选人"
-    safe_position = re.sub(r'\s+', '', position_part) if position_part else "面试"
+    name_part = (candidate_name or "候选人").strip()
+    position_part = (job_position or "面试岗位").strip()
+    # 清洗：去路径特殊字符、UUID 前缀、多余空格
+    name_part = re.sub(r'[\\/:*?"<>|]', '', name_part)
+    name_part = re.sub(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}[_-]*', '', name_part, flags=re.I)
+    name_part = re.sub(r'\s+', '', name_part).strip('_') or "候选人"
+    position_part = re.sub(r'[\\/:*?"<>|,]', '', position_part)
+    position_part = re.sub(r'\s+', '', position_part).strip()[:20] or "面试"
     ext = doc_format
-    filename = f"模拟面试_{safe_name}_{safe_position}_{date_str}.{ext}"
+    filename = f"模拟面试_{name_part}_{position_part}_{date_str}.{ext}"
 
     if doc_format == "md":
         content = _build_markdown(interview, questions)
