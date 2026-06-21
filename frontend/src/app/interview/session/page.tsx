@@ -106,8 +106,12 @@ function SessionContent() {
 
   /* ---------- WebSocket ---------- */
   const connectWs = useCallback(() => {
-    if (!interviewId||wsRef.current?.readyState===WebSocket.OPEN) return;
+    if (!interviewId) return;
     const t=localStorage.getItem('access_token'); if(!t) return;
+    // 关闭旧的非 OPEN 连接
+    if(wsRef.current&&wsRef.current.readyState!==WebSocket.OPEN){
+      try{wsRef.current.close();}catch{}
+    }
     const ws=new WebSocket(`${getWsUrl()}/api/ws/interview/${interviewId}?token=${t}`);
     ws.binaryType='arraybuffer';
     ws.onopen=()=>setWsConnected(true);
@@ -118,25 +122,26 @@ function SessionContent() {
         else if(m.type==='question_score'&&m.error)setPhase('review');
       }catch{}
     };
-    ws.onclose=()=>setWsConnected(false);
-    ws.onerror=()=>setWsConnected(false);
+    ws.onclose=()=>{setWsConnected(false);wsRef.current=null;};
+    ws.onerror=()=>{setWsConnected(false);wsRef.current=null;};
     wsRef.current=ws;
   },[interviewId]);
 
   const speak=useCallback((text:string)=>{
-    const send=()=>{
+    const doSend=()=>{
       const ws=wsRef.current;
-      if(ws?.readyState===WebSocket.OPEN){
+      if(ws&&ws.readyState===WebSocket.OPEN){
         ws.send(JSON.stringify({type:'tts_request',text,voice:localStorage.getItem('tts_voice')||'zh-CN-XiaoxiaoNeural'}));
         return true;
       }
       return false;
     };
-    if(send())return;
-    // 重连并延迟重试
-    connectWs();
-    setTimeout(()=>send(),1000);
-    setTimeout(()=>send(),2500);
+    if(!doSend()){
+      connectWs();  // 强制重连
+      setTimeout(doSend,800);
+      setTimeout(doSend,2000);
+      setTimeout(doSend,4000);
+    }
   },[connectWs]);
 
   /* ---------- Load ---------- */
@@ -156,16 +161,9 @@ function SessionContent() {
     if(phase!=='question'||!questions[currentIndex])return;
     const autoRead=localStorage.getItem('tts_auto_read')==='true';
     if(!autoRead||hasAutoRead)return;
-    // 等 WebSocket 连上后再朗读
-    const trySpeak=()=>{
-      if(wsRef.current?.readyState===WebSocket.OPEN){
-        wsRef.current.send(JSON.stringify({type:'tts_request',text:questions[currentIndex].question_text,voice:localStorage.getItem('tts_voice')||'zh-CN-XiaoxiaoNeural'}));
-        setHasAutoRead(true);
-      }else{setTimeout(trySpeak,500);}
-    };
-    const t=setTimeout(trySpeak,800);
-    return ()=>clearTimeout(t);
-  },[phase,currentIndex,questions,hasAutoRead]);
+    setHasAutoRead(true);
+    speak(questions[currentIndex].question_text);
+  },[phase,currentIndex,questions,hasAutoRead,speak]);
 
   // 题目切换时重置 autoRead 标记
   useEffect(()=>{setHasAutoRead(false);},[currentIndex]);
@@ -177,7 +175,11 @@ function SessionContent() {
     const SR=createSR();if(!SR)setHasSpeechAPI(false);
     try{
       const stream=await navigator.mediaDevices.getUserMedia({audio:true});streamRef.current=stream;
-      if(SR){speechRef.current=SR;SR.onresult=(e:any)=>{let t='';for(let i=0;i<e.results.length;i++)t+=e.results[i][0].transcript;liveTextRef.current=t;setLiveText(t);};SR.onerror=()=>{};SR.start();}
+      if(SR){speechRef.current=SR;
+        SR.onresult=(e:any)=>{let t='';for(let i=0;i<e.results.length;i++)t+=e.results[i][0].transcript;liveTextRef.current=t;setLiveText(t);};
+        SR.onerror=(e:any)=>{if(e.error!=='no-speech'&&e.error!=='aborted')console.warn('SR error:',e.error);};
+        SR.onend=()=>{/* continuous=true 会自动重启，但如果停止了就手动重启 */if(speechRef.current===SR){try{SR.start();}catch{}}};
+        SR.start();}
       const mt=MediaRecorder.isTypeSupported('audio/webm;codecs=opus')?'audio/webm;codecs=opus':'audio/webm';
       const rec=new MediaRecorder(stream,{mimeType:mt});
       rec.ondataavailable=(e)=>{if(e.data.size>0)chunksRef.current.push(e.data);};
