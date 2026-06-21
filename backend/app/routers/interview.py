@@ -1,5 +1,8 @@
 import uuid
-from fastapi import APIRouter, Depends, HTTPException
+import asyncio
+import tempfile
+import os
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -193,6 +196,55 @@ async def complete_interview(
     except Exception:
         pass
     return await _interview_to_response(interview, db)
+
+
+@router.post("/{interview_id}/transcribe")
+async def transcribe_audio(
+    interview_id: uuid.UUID,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+):
+    """接收上传的音频文件(webm/opus)，返回 FunASR 转写文本"""
+    from app.services.asr_service import transcribe_pcm
+
+    body = await request.body()
+    if not body or len(body) < 100:
+        return {"code": 0, "data": {"text": ""}, "message": "ok"}
+
+    tmp_path = None
+    wav_path = None
+    try:
+        # 写入临时 webm 文件
+        with tempfile.NamedTemporaryFile(suffix='.webm', delete=False) as f:
+            f.write(body)
+            tmp_path = f.name
+
+        wav_path = tmp_path + '.wav'
+        # ffmpeg: webm → 16kHz mono WAV
+        proc = await asyncio.create_subprocess_exec(
+            'ffmpeg', '-y', '-i', tmp_path,
+            '-ar', '16000', '-ac', '1', '-f', 'wav', wav_path,
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+        )
+        await proc.communicate()
+
+        if os.path.exists(wav_path) and os.path.getsize(wav_path) > 44:
+            with open(wav_path, 'rb') as f:
+                wav_bytes = f.read()
+            pcm_bytes = wav_bytes[44:]
+            text = await transcribe_pcm(pcm_bytes)
+            return {"code": 0, "data": {"text": text}, "message": "ok"}
+
+        return {"code": 0, "data": {"text": ""}, "message": "ok"}
+    except Exception as e:
+        return {"code": 0, "data": {"text": ""}, "message": str(e)}
+    finally:
+        for p in (tmp_path, wav_path):
+            if p:
+                try:
+                    os.unlink(p)
+                except OSError:
+                    pass
 
 
 @router.post("/{interview_id}/rescore", response_model=InterviewResponse)

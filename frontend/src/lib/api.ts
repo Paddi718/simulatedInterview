@@ -78,8 +78,18 @@ async function downloadBlob(endpoint: string): Promise<{ blob: Blob; filename: s
 
 export const api = {
   get: <T>(endpoint: string) => request<T>(endpoint),
-  post: <T>(endpoint: string, data?: any) =>
-    request<T>(endpoint, { method: 'POST', body: JSON.stringify(data) }),
+  post: <T>(endpoint: string, data?: any) => {
+    // 如果 data 是 ArrayBuffer 或 Uint8Array，作为二进制发送
+    if (data instanceof ArrayBuffer || data instanceof Uint8Array) {
+      const body: ArrayBuffer = data instanceof Uint8Array ? (data.buffer as ArrayBuffer) : data;
+      return request<T>(endpoint, {
+        method: 'POST',
+        body: body as unknown as BodyInit,
+        headers: { 'Content-Type': 'application/octet-stream' },
+      });
+    }
+    return request<T>(endpoint, { method: 'POST', body: JSON.stringify(data) });
+  },
   put: <T>(endpoint: string, data?: any) =>
     request<T>(endpoint, { method: 'PUT', body: JSON.stringify(data) }),
   del: <T>(endpoint: string) =>
