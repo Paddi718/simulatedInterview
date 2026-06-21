@@ -57,33 +57,137 @@ def _build_html(interview: Interview, questions: list[InterviewQuestion]) -> str
     return html
 
 
+def _find_chinese_font() -> str | None:
+    """查找系统中可用的中文字体"""
+    import platform
+    candidates = []
+    if platform.system() == 'Windows':
+        candidates = [
+            'C:/Windows/Fonts/msyh.ttc',
+            'C:/Windows/Fonts/simsun.ttc',
+            'C:/Windows/Fonts/simhei.ttf',
+        ]
+    else:
+        candidates = [
+            '/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc',
+            '/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf',
+            '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
+        ]
+    for path in candidates:
+        if os.path.exists(path):
+            return path
+    return None
+
+
 def _build_pdf(interview: Interview, questions: list[InterviewQuestion]) -> bytes:
     """生成 PDF 格式报告
-    优先用 weasyprint，失败则返回 HTML（浏览器可直接打开 .html 文件）
+    1. 优先用 weasyprint（Linux/Docker）
+    2. 其次用 fpdf2（跨平台，纯 Python）
+    3. 都不行则返回 HTML
     """
-    html = _build_html(interview, questions)
-
-    # 检测 fontconfig（weasyprint 依赖）
     import shutil
-    if not shutil.which('fc-list'):
-        # 无 fontconfig → 直接返回 HTML，避免卡死
-        return html.encode('utf-8')
 
-    try:
-        from weasyprint import HTML
-    except Exception:
-        return html.encode('utf-8')
+    # 方式 1：weasyprint（需要 fontconfig）
+    if shutil.which('fc-list'):
+        try:
+            from weasyprint import HTML as WHTML
+            import concurrent.futures
 
-    def _render():
-        return HTML(string=html).write_pdf()
+            html = _build_html(interview, questions)
 
-    try:
-        import concurrent.futures
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(_render)
-            return future.result(timeout=15)
-    except Exception:
-        return html.encode('utf-8')
+            def _render():
+                return WHTML(string=html).write_pdf()
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                return executor.submit(_render).result(timeout=15)
+        except Exception:
+            pass
+
+    # 方式 2：fpdf2（纯 Python，支持中文）
+    font_path = _find_chinese_font()
+    if font_path:
+        try:
+            return _build_pdf_fpdf2(interview, questions, font_path)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+
+    # 方式 3：降级为 HTML
+    return _build_html(interview, questions).encode('utf-8')
+
+
+def _build_pdf_fpdf2(interview: Interview, questions: list[InterviewQuestion], font_path: str) -> bytes:
+    """使用 fpdf2 生成 PDF（支持中文）"""
+    from fpdf import FPDF
+
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.add_font('cjk', '', font_path, uni=True)
+    pdf.add_font('cjk', 'B', font_path, uni=True)
+
+    scores = interview.dimension_scores or {}
+
+    def w(text: str, bold: bool = False, size: int = 10):
+        style = 'B' if bold else ''
+        pdf.set_font('cjk', style, size)
+
+    def title(text: str):
+        pdf.set_font('cjk', 'B', 18)
+        pdf.cell(0, 14, text, new_x="LMARGIN", new_y="NEXT", align='C')
+        pdf.ln(6)
+
+    def heading(text: str):
+        pdf.ln(4)
+        pdf.set_font('cjk', 'B', 13)
+        pdf.cell(0, 10, text, new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(2)
+
+    def body(text: str, size: int = 10):
+        pdf.set_font('cjk', '', size)
+        pdf.multi_cell(0, 6, text)
+        pdf.ln(1)
+
+    # 标题
+    title('模拟面试报告')
+
+    # 概览
+    heading('面试概览')
+    body(f"总体评分：{interview.total_score or '-'} 分 / 100")
+    body(f"难度级别：{interview.difficulty}")
+    body(f"内容完整性：{scores.get('content_completeness', '-')} 分  |  专业度：{scores.get('professionalism', '-')} 分")
+    body(f"表达能力：{scores.get('expression', '-')} 分  |  STAR法则：{scores.get('star_method', '-')} 分")
+
+    # 综合评价
+    if interview.ai_overview:
+        heading('综合评价')
+        body(interview.ai_overview)
+
+    # 逐题详情
+    heading('逐题详情')
+    for q in sorted(questions, key=lambda x: x.order_index):
+        sd = q.score_detail or {}
+        pdf.set_font('cjk', 'B', 11)
+        pdf.cell(0, 8, f"第{q.order_index}题：{q.question_text[:60]}", new_x="LMARGIN", new_y="NEXT")
+        body(f"你的回答：{q.user_answer_transcript or '（未作答）'}", 9)
+        if q.ai_score is not None:
+            body(f"评分：{q.ai_score} 分", 9)
+        if q.ai_evaluation:
+            body(f"评语：{q.ai_evaluation}", 9)
+        body(f"参考答案：{q.reference_answer or '暂无'}", 9)
+        if q.improvement_suggestion:
+            body(f"改进建议：{q.improvement_suggestion}", 9)
+        pdf.ln(3)
+
+    # 简历建议
+    if interview.resume_suggestions:
+        heading('简历优化建议')
+        body(interview.resume_suggestions)
+
+    pdf.ln(5)
+    pdf.set_font('cjk', '', 8)
+    pdf.cell(0, 6, '由 AI 模拟面试系统生成', align='R')
+
+    return pdf.output()
 
 
 def _build_docx(interview: Interview, questions: list[InterviewQuestion]) -> bytes:
