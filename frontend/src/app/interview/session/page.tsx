@@ -170,9 +170,15 @@ function SessionContent() {
     try{
       const stream=await navigator.mediaDevices.getUserMedia({audio:true});streamRef.current=stream;
       if(SR){speechRef.current=SR;
-        SR.onresult=(e:any)=>{let t='';for(let i=0;i<e.results.length;i++)t+=e.results[i][0].transcript;liveTextRef.current=t;setLiveText(t);};
+        SR.onresult=(e:any)=>{
+          let t='';
+          for(let i=0;i<e.results.length;i++)t+=e.results[i][0].transcript;
+          // 拼接而非替换：识别器重启时 e.results 只有新结果
+          liveTextRef.current=liveTextRef.current+t;
+          setLiveText(liveTextRef.current);
+        };
         SR.onerror=(e:any)=>{if(e.error!=='no-speech'&&e.error!=='aborted')console.warn('SR error:',e.error);};
-        SR.onend=()=>{/* continuous=true 会自动重启，但如果停止了就手动重启 */if(speechRef.current===SR){try{SR.start();}catch{}}};
+        SR.onend=()=>{/* continuous=true 自动处理，不手动重启避免丢结果 */};
         SR.start();}
       const mt=MediaRecorder.isTypeSupported('audio/webm;codecs=opus')?'audio/webm;codecs=opus':'audio/webm';
       const rec=new MediaRecorder(stream,{mimeType:mt});
