@@ -272,6 +272,13 @@ async def _interview_to_response(interview: Interview, db: AsyncSession) -> Inte
             order_index=q.order_index,
             question_text=q.question_text,
             question_type=q.question_type,
+            user_answer_transcript=q.user_answer_transcript,
+            duration_seconds=q.duration_seconds,
+            ai_score=q.ai_score,
+            score_detail=q.score_detail,
+            ai_evaluation=q.ai_evaluation,
+            reference_answer=q.reference_answer,
+            improvement_suggestion=q.improvement_suggestion,
         )
         for q in db_questions
     ]

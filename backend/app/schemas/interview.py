@@ -12,6 +12,14 @@ class QuestionItem(BaseModel):
     order_index: int
     question_text: str
     question_type: str
+    # 答题结果（评分后才有）
+    user_answer_transcript: Optional[str] = None
+    duration_seconds: Optional[int] = None
+    ai_score: Optional[int] = None
+    score_detail: Optional[dict] = None
+    ai_evaluation: Optional[str] = None
+    reference_answer: Optional[str] = None
+    improvement_suggestion: Optional[str] = None
 
 
 class InterviewResponse(BaseModel):

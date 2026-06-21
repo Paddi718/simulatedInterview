@@ -18,36 +18,34 @@ export default function SettingsPage() {
   const [user, setUser] = useState<any>(null);
   const [voice, setVoice] = useState('zh-CN-XiaoxiaoNeural');
   const [speed, setSpeed] = useState(1.0);
+  const [autoRead, setAutoRead] = useState(false);
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     const token = localStorage.getItem('access_token');
-    if (!token) {
-      router.push('/login');
-      return;
-    }
+    if (!token) { router.push('/login'); return; }
+    // 从 localStorage 读取偏好
+    setVoice(localStorage.getItem('tts_voice') || 'zh-CN-XiaoxiaoNeural');
+    setSpeed(parseFloat(localStorage.getItem('tts_speed') || '1.0'));
+    setAutoRead(localStorage.getItem('tts_auto_read') === 'true');
+    // 从后端同步
     api.get<any>('/api/auth/me').then((u) => {
       setUser(u);
       if (u.tts_preference) {
-        setVoice(u.tts_preference.voice || 'zhitian');
-        setSpeed(u.tts_preference.speed || 1.0);
+        setVoice(u.tts_preference.voice || voice);
+        setSpeed(u.tts_preference.speed || speed);
+        setAutoRead(u.tts_preference.auto_read ?? autoRead);
       }
-    }).catch(() => {
-      localStorage.removeItem('access_token');
-      router.push('/login');
-    });
+    }).catch(() => { localStorage.removeItem('access_token'); router.push('/login'); });
   }, []);
 
   const handleSave = async () => {
-    // 同时保存到 localStorage（离线兜底）和后端（跨设备同步）
     localStorage.setItem('tts_voice', voice);
     localStorage.setItem('tts_speed', String(speed));
+    localStorage.setItem('tts_auto_read', String(autoRead));
     try {
-      await api.put('/api/auth/me', { tts_preference: { voice, speed } });
-    } catch (err) {
-      // 后端保存失败不影响本地使用，仅静默失败
-      console.warn('Failed to sync TTS preference to server:', err);
-    }
+      await api.put('/api/auth/me', { tts_preference: { voice, speed, auto_read: autoRead } });
+    } catch (err) { console.warn('Failed to sync settings:', err); }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
@@ -81,15 +79,18 @@ export default function SettingsPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium mb-2">语速：{speed}x</label>
-                <input
-                  type="range"
-                  min="0.5"
-                  max="2.0"
-                  step="0.1"
-                  value={speed}
-                  onChange={(e) => setSpeed(parseFloat(e.target.value))}
-                  className="w-full"
-                />
+                <input type="range" min="0.5" max="2.0" step="0.1" value={speed}
+                  onChange={(e) => setSpeed(parseFloat(e.target.value))} className="w-full" />
+              </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="text-sm font-medium">自动朗读题目</label>
+                  <p className="text-xs text-gray-400">进入每题时 AI 面试官自动朗读题目</p>
+                </div>
+                <button onClick={() => setAutoRead(!autoRead)}
+                  className={`relative w-11 h-6 rounded-full transition-colors ${autoRead ? 'bg-blue-600' : 'bg-gray-300'}`}>
+                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${autoRead ? 'translate-x-5' : ''}`} />
+                </button>
               </div>
               <button onClick={handleSave} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
                 {saved ? '已保存 ✓' : '保存设置'}

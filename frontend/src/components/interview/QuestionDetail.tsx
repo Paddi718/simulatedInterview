@@ -53,20 +53,23 @@ export default function QuestionDetail({ question }: QuestionDetailProps) {
 
       {expanded && (
         <div className="mt-4 space-y-4 border-t pt-4">
-          {question.user_answer_transcript && (
-            <div>
-              <h4 className="font-medium text-sm text-gray-500 mb-1">你的回答</h4>
+          {/* 你的回答 — 始终显示 */}
+          <div>
+            <h4 className="font-medium text-sm text-gray-500 mb-1">你的回答</h4>
+            {question.user_answer_transcript ? (
               <p className="text-sm">{question.user_answer_transcript}</p>
-            </div>
-          )}
+            ) : (
+              <p className="text-sm text-gray-400 italic">（未作答）</p>
+            )}
+          </div>
 
-          {question.score_detail && (
+          {question.score_detail && Object.keys(question.score_detail).length > 0 && (
             <div>
               <h4 className="font-medium text-sm text-gray-500 mb-2">评分详情</h4>
               <div className="grid grid-cols-2 gap-2">
                 {Object.entries(question.score_detail).map(([key, val]) => (
                   <div key={key} className="flex justify-between text-sm bg-gray-50 p-2 rounded">
-                    <span>{key}</span>
+                    <span>{key==='content_completeness'?'内容完整性':key==='professionalism'?'专业度':key==='expression'?'表达能力':key==='star_method'?'STAR法则':key}</span>
                     <span className="font-medium">{val}</span>
                   </div>
                 ))}
@@ -81,12 +84,15 @@ export default function QuestionDetail({ question }: QuestionDetailProps) {
             </div>
           )}
 
-          {question.reference_answer && (
-            <div>
-              <h4 className="font-medium text-sm text-gray-500 mb-1">参考答案</h4>
+          {/* 参考答案 — 始终显示（即使没回答） */}
+          <div>
+            <h4 className="font-medium text-sm text-gray-500 mb-1">参考答案</h4>
+            {question.reference_answer ? (
               <p className="text-sm text-gray-700">{question.reference_answer}</p>
-            </div>
-          )}
+            ) : (
+              <p className="text-sm text-gray-400 italic">（评分完成后生成）</p>
+            )}
+          </div>
 
           {question.improvement_suggestion && (
             <div>
