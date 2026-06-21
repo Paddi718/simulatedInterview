@@ -21,12 +21,15 @@ async def score_question(
     # 空回答或标记为未回答的，仍调用 LLM 生成参考答案
     if not answer_text or answer_text == "（未回答）":
         answer_text = "（未作答）"
-        prompt = f"""你是一位专业的面试官。面试者未回答以下题目，请仅提供参考答案和改进建议。
-请生成该题的参考答案和简短的建议。
+        prompt = f"""你是一位专业的面试官。面试者未回答以下题目，请基于简历和岗位要求生成参考答案。
+
+岗位要求：{json.dumps(jd_data, ensure_ascii=False, indent=2)}
+面试者简历：{json.dumps(resume_data, ensure_ascii=False, indent=2)}
 
 题目类型：{question.question_type}
 题目：{question.question_text}
-面试者回答：（未作答）
+
+请结合简历和岗位要求，给出一道有针对性、具体的参考答案，并给出改进建议。
 
 输出 JSON 格式：
 {{
@@ -35,16 +38,16 @@ async def score_question(
   "expression": 0,
   "star_method": 0,
   "total_score": 0,
-  "evaluation": "本题未作答。请在面试中认真回答每一道题。",
-  "reference_answer": "本题的参考答案...",
+  "evaluation": "本题未作答。以下是该题的参考答案，请学习参考。",
+  "reference_answer": "结合岗位要求和简历背景的具体参考答案...",
   "improvement_suggestion": "具体的改进建议"
 }}
 
 只输出 JSON。"""
         result = await llm_chat([
-            {"role": "system", "content": "你是一位面试官。面试者跳过了这道题，请仅生成参考答案和改进建议。必须只输出JSON。"},
+            {"role": "system", "content": "你是一位面试官。面试者跳过了这道题，请基于简历和岗位要求生成有针对性的参考答案。必须只输出JSON。"},
             {"role": "user", "content": prompt},
-        ], temperature=0.1)
+        ], temperature=0.5)
         result = result.strip()
         if result.startswith("```"): result = result.split("\n", 1)[1]
         if result.endswith("```"): result = result[:-3]
