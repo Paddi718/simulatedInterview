@@ -69,10 +69,17 @@ async def score_question(
 只输出 JSON。"""
 
     result = await llm_chat([
-        {"role": "system", "content": "你是一位严格公正的面试评分官。根据回答质量客观评分，不虚高。用中文回答。"},
+        {"role": "system", "content": "你是一位严格公正的面试评分官。根据回答质量客观评分，不虚高。用中文回答。必须只输出JSON，不要有其他内容。"},
         {"role": "user", "content": prompt},
-    ], response_format={"type": "json_object"}, temperature=0.1)
+    ], temperature=0.1)
 
+    # 清理可能的 markdown fence
+    result = result.strip()
+    if result.startswith("```"):
+        lines = result.split("\n")
+        result = "\n".join(lines[1:])
+        if result.endswith("```"):
+            result = result[:-3]
     scores = json.loads(result)
     return scores
 
@@ -128,10 +135,16 @@ async def generate_interview_overview(
 只输出 JSON。"""
 
     result = await llm_chat([
-        {"role": "system", "content": "你是一位资深面试总评官。客观公正，根据实际表现评分。用中文回答。"},
+        {"role": "system", "content": "你是一位资深面试总评官。客观公正，根据实际表现评分。用中文回答。必须只输出JSON。"},
         {"role": "user", "content": prompt},
-    ], response_format={"type": "json_object"}, temperature=0.1)
+    ], temperature=0.1)
 
+    result = result.strip()
+    if result.startswith("```"):
+        lines = result.split("\n")
+        result = "\n".join(lines[1:])
+        if result.endswith("```"):
+            result = result[:-3]
     return json.loads(result)
 
 

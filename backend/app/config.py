@@ -21,7 +21,7 @@ class Settings(BaseSettings):
 
     # LLM
     llm_api_key: str = ""
-    llm_api_base: str = "https://api.deepseek.com"
+    llm_api_base: str = "https://api.deepseek.com/v1"
     llm_model: str = "deepseek-chat"
 
     # Storage

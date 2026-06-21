@@ -39,11 +39,34 @@ async def generate_questions(
 只输出 JSON 数组。"""
 
     result = await llm_chat([
-        {"role": "system", "content": "你是一位资深的专业面试官。请根据简历和JD生成针对性面试题。用中文回答。"},
+        {"role": "system", "content": "你是一位资深的专业面试官。请根据简历和JD生成针对性面试题。用中文回答。必须只输出JSON数组。"},
         {"role": "user", "content": prompt},
-    ], response_format={"type": "json_object"})
+    ])
 
-    questions = json.loads(result)
+    # 尝试多种 JSON 解析方式（兼容不同 LLM 输出格式）
+    result = result.strip()
+    # 去掉 markdown code fences
+    if result.startswith("```"):
+        lines = result.split("\n")
+        result = "\n".join(lines[1:]) if len(lines) > 1 else result
+        if result.endswith("```"):
+            result = result[:-3]
+
+    try:
+        questions = json.loads(result)
+    except json.JSONDecodeError:
+        # 尝试提取 JSON 数组
+        import re
+        match = re.search(r'\[.*\]', result, re.DOTALL)
+        if match:
+            try:
+                questions = json.loads(match.group())
+            except json.JSONDecodeError:
+                return []
+        else:
+            return []
+
+    # 兼容 {"questions": [...]} 格式
     if isinstance(questions, dict) and "questions" in questions:
         questions = questions["questions"]
 

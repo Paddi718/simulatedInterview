@@ -23,10 +23,11 @@ async def llm_chat(
         "messages": messages,
         "temperature": temperature,
     }
-    if response_format:
-        payload["response_format"] = response_format
+    # DeepSeek 不支持 json_object 格式，改用 prompt 中指示
+    # if response_format:
+    #     payload["response_format"] = response_format
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
+    async with httpx.AsyncClient(timeout=120.0) as client:
         resp = await client.post(
             f"{settings.llm_api_base}/chat/completions",
             headers=headers,
@@ -55,7 +56,13 @@ async def llm_parse(text: str) -> dict:
     result = await llm_chat([
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": prompt},
-    ], response_format={"type": "json_object"})
+    ])
+    result = result.strip()
+    if result.startswith("```"):
+        lines = result.split("\n")
+        result = "\n".join(lines[1:])
+        if result.endswith("```"):
+            result = result[:-3]
     return json.loads(result)
 
 
@@ -79,5 +86,11 @@ JD 文本：
     result = await llm_chat([
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": prompt},
-    ], response_format={"type": "json_object"})
+    ])
+    result = result.strip()
+    if result.startswith("```"):
+        lines = result.split("\n")
+        result = "\n".join(lines[1:])
+        if result.endswith("```"):
+            result = result[:-3]
     return json.loads(result)

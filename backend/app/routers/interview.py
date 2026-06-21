@@ -65,29 +65,38 @@ async def create_interview(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    try:
+        resume_id = uuid.UUID(data.resume_id)
+        jd_id = uuid.UUID(data.jd_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid resume_id or jd_id format")
+
     resume_result = await db.execute(
-        select(Resume).where(Resume.id == uuid.UUID(data.resume_id), Resume.user_id == current_user.id)
+        select(Resume).where(Resume.id == resume_id, Resume.user_id == current_user.id)
     )
     resume = resume_result.scalar_one_or_none()
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
 
     jd_result = await db.execute(
-        select(JobDescription).where(JobDescription.id == uuid.UUID(data.jd_id), JobDescription.user_id == current_user.id)
+        select(JobDescription).where(JobDescription.id == jd_id, JobDescription.user_id == current_user.id)
     )
     jd = jd_result.scalar_one_or_none()
     if not jd:
         raise HTTPException(status_code=404, detail="Job description not found")
 
-    interview = await InterviewEngine.create_interview(
-        db=db,
-        user_id=current_user.id,
-        resume_id=resume.id,
-        jd_id=jd.id,
-        resume_data=resume.parsed_data or {},
-        jd_data=jd.parsed_data or {},
-        difficulty=data.difficulty,
-    )
+    try:
+        interview = await InterviewEngine.create_interview(
+            db=db,
+            user_id=current_user.id,
+            resume_id=resume.id,
+            jd_id=jd.id,
+            resume_data=resume.parsed_data or {},
+            jd_data=jd.parsed_data or {},
+            difficulty=data.difficulty,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate interview: {str(e)}")
 
     return await _interview_to_response(interview, db)
 
