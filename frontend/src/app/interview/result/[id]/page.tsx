@@ -36,29 +36,26 @@ export default function ResultPage() {
   const { id } = useParams<{ id: string }>();
   const [result, setResult] = useState<InterviewResult | null>(null);
   const [loading, setLoading] = useState(true);
+  const [pollCount, setPollCount] = useState(0);
   const [error, setError] = useState('');
   const router = useRouter();
 
   useEffect(() => {
     const token = localStorage.getItem('access_token');
-    if (!token) {
-      router.push('/login');
-      return;
-    }
+    if (!token) { router.push('/login'); return; }
     loadResult();
   }, [id]);
 
   const loadResult = async () => {
-    // 轮询直到评分完成（total_score 不为 null）
     for (let i = 0; i < 60; i++) {
       try {
         const data = await api.get<InterviewResult>(`/api/interview/${id}`);
-        if (data.total_score !== null) {
+        if (data.total_score !== null || data.status === 'completed' && data.dimension_scores) {
           setResult(data); setLoading(false); return;
         }
-        setResult(data); // 显示部分数据
+        setResult(data); setPollCount(i + 1);
       } catch (err: any) { setError(err.message || '加载失败'); setLoading(false); return; }
-      await new Promise(r => setTimeout(r, 2000)); // 每 2 秒轮询
+      await new Promise(r => setTimeout(r, 2000));
     }
     setLoading(false);
   };
@@ -68,7 +65,12 @@ export default function ResultPage() {
       <div className="flex flex-col items-center justify-center min-h-screen gap-4">
         <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600" />
         <p className="text-gray-500 text-sm">AI 正在生成面试报告…</p>
-        <p className="text-gray-400 text-xs">评分和总评在后台处理中，请稍候</p>
+        <p className="text-gray-400 text-xs">评分和总评在后台处理中{pollCount > 0 ? `（已等待 ${pollCount * 2} 秒）` : ''}</p>
+        {result && (
+          <button onClick={() => setLoading(false)} className="mt-4 px-4 py-2 text-sm text-blue-600 border border-blue-300 rounded-lg hover:bg-blue-50">
+            先查看现有结果
+          </button>
+        )}
       </div>
     );
   }

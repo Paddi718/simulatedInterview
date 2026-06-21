@@ -230,18 +230,23 @@ async def complete_interview(
         raise HTTPException(status_code=404, detail="Interview not found")
     interview = await InterviewEngine.complete_interview(db, interview_id)
 
-    # 后台异步评分，不阻塞响应
-    async def _background_scoring():
-        from app.database import async_session_factory
-        async with async_session_factory() as bg_db:
-            try:
-                from app.services.scoring_service import run_full_scoring
-                await run_full_scoring(bg_db, interview_id)
-            except Exception:
-                pass
+    # 用线程池后台评分，避免 asyncio task 被取消
+    import threading
+    def _bg_score():
+        import asyncio
+        async def _run():
+            from app.database import async_session_factory
+            async with async_session_factory() as bg_db:
+                try:
+                    from app.services.scoring_service import run_full_scoring
+                    await run_full_scoring(bg_db, interview_id)
+                except Exception:
+                    pass
+        loop = asyncio.new_event_loop()
+        loop.run_until_complete(_run())
+        loop.close()
 
-    import asyncio
-    asyncio.create_task(_background_scoring())
+    threading.Thread(target=_bg_score, daemon=True).start()
 
     return await _interview_to_response(interview, db)
 
