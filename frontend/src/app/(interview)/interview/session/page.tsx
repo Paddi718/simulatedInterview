@@ -116,6 +116,7 @@ function SessionContent() {
   const streamRef = useRef<MediaStream|null>(null);
   const liveTextRef = useRef('');
   const liveTextElRef = useRef<HTMLParagraphElement|null>(null);
+  const stoppingManuallyRef = useRef(false);
 
   useEffect(() => () => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -204,7 +205,7 @@ function SessionContent() {
     if(thinkingRef.current){clearInterval(thinkingRef.current);thinkingRef.current=null;}
     setFinalThinkingTime(thinkingValueRef.current);
     setTranscript('');setLiveText('');liveTextRef.current='';setTimer(0);setRecordedTime(0);timerValueRef.current=0;
-    chunksRef.current=[];connectWs();
+    chunksRef.current=[];stoppingManuallyRef.current=false;connectWs();
     const SR=createSR();if(!SR)setHasSpeechAPI(false);
     try{
       const stream=await navigator.mediaDevices.getUserMedia({audio:true});streamRef.current=stream;
@@ -224,7 +225,12 @@ function SessionContent() {
           setLiveText(displayText); // 保持 state 同步（低频用于 UI 条件渲染）
         };
         SR.onerror=(e:any)=>{if(e.error!=='no-speech'&&e.error!=='aborted')console.warn('SR error:',e.error);};
-        SR.onend=()=>{};
+        SR.onend=()=>{
+          // 停顿后自动重启识别（continuous=true 在某些浏览器不可靠）
+          if(!stoppingManuallyRef.current && mediaRecorderRef.current?.state==='recording'){
+            try{speechRef.current?.start();}catch{}
+          }
+        };
         SR.start();}
       const mt=MediaRecorder.isTypeSupported('audio/webm;codecs=opus')?'audio/webm;codecs=opus':'audio/webm';
       const rec=new MediaRecorder(stream,{mimeType:mt});
@@ -259,6 +265,7 @@ function SessionContent() {
   };
 
   const stopRecording=useCallback(()=>{
+    stoppingManuallyRef.current=true;
     if(mediaRecorderRef.current&&mediaRecorderRef.current.state!=='inactive')mediaRecorderRef.current.stop();
     else processAudio();
   },[]);
