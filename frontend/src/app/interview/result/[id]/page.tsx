@@ -9,7 +9,8 @@ import ExportButtons from '@/components/interview/ExportButtons';
 
 interface QuestionItem {
   order_index: number; question_text: string; question_type: string;
-  user_answer_transcript?: string; ai_score?: number;
+  user_answer_transcript?: string; duration_seconds?: number;
+  thinking_duration_seconds?: number; ai_score?: number;
   score_detail?: Record<string, number>; ai_evaluation?: string;
   reference_answer?: string; improvement_suggestion?: string;
 }

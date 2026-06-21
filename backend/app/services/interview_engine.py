@@ -88,6 +88,7 @@ class InterviewEngine:
         transcript: str,
         audio_path: Optional[str] = None,
         duration: int = 0,
+        thinking_duration: int = 0,
     ) -> InterviewQuestion:
         result = await db.execute(
             select(InterviewQuestion).where(
@@ -100,6 +101,7 @@ class InterviewEngine:
             raise ValueError("Question not found")
         question.user_answer_transcript = transcript
         question.duration_seconds = duration
+        question.thinking_duration_seconds = thinking_duration
         if audio_path:
             question.user_audio_path = audio_path
         await db.commit()

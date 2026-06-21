@@ -414,11 +414,19 @@ def _build_context(interview: Interview, questions: list[InterviewQuestion]) -> 
     q_list = []
     for q in sorted(questions, key=lambda x: x.order_index):
         score_detail = q.score_detail or {}
+        # 格式化时长
+        def _fmt_time(s: int | None) -> str:
+            if s is None: return "-"
+            m, sec = divmod(s, 60)
+            return f"{m}:{sec:02d}" if m > 0 else f"{sec}秒"
+
         q_list.append({
             "index": q.order_index,
             "question_type_label": QUESTION_TYPE_LABELS.get(q.question_type, q.question_type),
             "question_text": q.question_text,
             "answer": q.user_answer_transcript or "（未回答）",
+            "thinking_time": _fmt_time(q.thinking_duration_seconds),
+            "answer_time": _fmt_time(q.duration_seconds),
             "content_score": score_detail.get("content_completeness", "-"),
             "professional_score": score_detail.get("professionalism", "-"),
             "expression_score": score_detail.get("expression", "-"),

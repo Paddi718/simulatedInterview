@@ -16,6 +16,7 @@ class InterviewQuestion(Base):
     user_audio_path: Mapped[str | None] = mapped_column(Text, nullable=True)
     user_answer_transcript: Mapped[str | None] = mapped_column(Text, nullable=True)
     duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    thinking_duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     ai_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     score_detail: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=None)
     ai_evaluation: Mapped[str | None] = mapped_column(Text, nullable=True)

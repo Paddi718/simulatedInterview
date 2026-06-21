@@ -219,6 +219,7 @@ async def submit_answer(
         data.order_index,
         data.answer_transcript,
         duration=data.duration_seconds,
+        thinking_duration=data.thinking_duration_seconds,
     )
 
     # 后台评分：不阻塞用户，用独立线程+session评分
@@ -479,6 +480,7 @@ async def _interview_to_response(interview: Interview, db: AsyncSession) -> Inte
             question_type=q.question_type,
             user_answer_transcript=q.user_answer_transcript,
             duration_seconds=q.duration_seconds,
+            thinking_duration_seconds=q.thinking_duration_seconds,
             ai_score=q.ai_score,
             score_detail=q.score_detail,
             ai_evaluation=q.ai_evaluation,

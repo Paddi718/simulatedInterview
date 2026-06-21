@@ -68,6 +68,8 @@ function SessionContent() {
   const [error, setError] = useState('');
   const [timer, setTimer] = useState(0);
   const [recordedTime, setRecordedTime] = useState(0);   // 录音结束时的时长
+  const [thinkingTime, setThinkingTime] = useState(0);   // 思考时间
+  const [finalThinkingTime, setFinalThinkingTime] = useState(0); // 提交时的思考时间
   const [transcript, setTranscript] = useState('');
   const [liveText, setLiveText] = useState('');
   const [asrLoading, setAsrLoading] = useState(false);
@@ -80,6 +82,8 @@ function SessionContent() {
 
   const timerRef = useRef<NodeJS.Timeout|null>(null);
   const timerValueRef = useRef(0);    // 计时器实时值
+  const thinkingRef = useRef<NodeJS.Timeout|null>(null);
+  const thinkingValueRef = useRef(0); // 思考计时器实时值
   const totalTimeRef = useRef(0);     // 累计总耗时
   const wsRef = useRef<WebSocket|null>(null);
   const mediaRecorderRef = useRef<MediaRecorder|null>(null);
@@ -162,8 +166,21 @@ function SessionContent() {
   // 题目切换时停止朗读 + 重置 autoRead 标记
   useEffect(()=>{try{(window as any).speechSynthesis?.cancel();}catch{}setHasAutoRead(false);},[currentIndex]);
 
+  /* ---------- Thinking timer ---------- */
+  // 题目出现时开始思考计时
+  useEffect(()=>{
+    if(phase!=='question'||!questions[currentIndex])return;
+    // 重置并开始思考计时
+    thinkingValueRef.current=0;setThinkingTime(0);setFinalThinkingTime(0);
+    thinkingRef.current=setInterval(()=>{const v=thinkingValueRef.current+1;thinkingValueRef.current=v;setThinkingTime(v);},1000);
+    return ()=>{if(thinkingRef.current){clearInterval(thinkingRef.current);thinkingRef.current=null;}};
+  },[phase,currentIndex,questions]);
+
   /* ---------- Recording ---------- */
   const startRecording=useCallback(async()=>{
+    // 停止思考计时，记录思考时间
+    if(thinkingRef.current){clearInterval(thinkingRef.current);thinkingRef.current=null;}
+    setFinalThinkingTime(thinkingValueRef.current);
     setTranscript('');setLiveText('');liveTextRef.current='';setTimer(0);setRecordedTime(0);timerValueRef.current=0;
     chunksRef.current=[];connectWs();
     const SR=createSR();if(!SR)setHasSpeechAPI(false);
@@ -236,7 +253,8 @@ function SessionContent() {
       await api.post(`/api/interview/${interviewId}/submit-answer`,{
         order_index:q.order_index,
         answer_transcript:answerText,
-        duration_seconds:skip?0:recordedTime
+        duration_seconds:skip?0:recordedTime,
+        thinking_duration_seconds:skip?0:finalThinkingTime,
       });
     }catch{
       setPhase('review');
@@ -317,6 +335,7 @@ function SessionContent() {
             {phase==='question'&&(
               <div className="flex flex-col items-center gap-6">
                 {!hasSpeechAPI&&<p className="text-xs text-amber-600 bg-amber-50 px-3 py-1 rounded">浏览器不支持语音识别，录音后将通过AI转写</p>}
+                {thinkingTime>0&&<p className="text-sm text-gray-400">⏳ 思考中 {formatTime(thinkingTime)}</p>}
                 <p className="text-sm text-gray-400">准备好后，点击下方按钮开始录音回答</p>
                 <button onClick={startRecording} className="relative w-24 h-24 rounded-full bg-white border-2 border-dashed border-blue-300 hover:border-blue-500 hover:bg-blue-50 transition-all flex items-center justify-center group">
                   <svg className="w-10 h-10 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m-3 0h6m-3-4a4 4 0 01-4-4V6a4 4 0 118 0v5a4 4 0 01-4 4z"/></svg>
@@ -350,9 +369,12 @@ function SessionContent() {
             {/* ---- review: show transcript ---- */}
             {phase==='review'&&(
               <div className="flex flex-col gap-5">
-                <div>{/* 时长标签 */}
-                  {showTimer&&<p className="text-xs text-gray-400">⏱ 录音时长 {formatTime(recordedTime)}</p>}
-                  <label className="block text-sm font-medium text-gray-600 mb-2 mt-2">你的回答</label>
+                <div className="flex items-center gap-4 text-xs text-gray-400">
+                  {finalThinkingTime>0&&<span>💭 思考 {formatTime(finalThinkingTime)}</span>}
+                  {showTimer&&<span>⏱ 回答 {formatTime(recordedTime)}</span>}
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-600 mb-2">你的回答</label>
                   <div className="bg-gray-50 rounded-xl p-4 min-h-[100px] border border-gray-200">
                     <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{displayText||'（未检测到回答内容）'}</p>
                   </div>
@@ -375,7 +397,10 @@ function SessionContent() {
             {phase==='feedback'&&feedback&&(
               <div className="flex flex-col gap-5">
                 {/* 耗时信息 */}
-                <p className="text-xs text-gray-400 text-center">⏱ 本题作答耗时 {formatTime(recordedTime)}</p>
+                <div className="flex items-center justify-center gap-4 text-xs text-gray-400">
+                  {finalThinkingTime>0&&<span>💭 思考 {formatTime(finalThinkingTime)}</span>}
+                  {recordedTime>0&&<span>⏱ 回答 {formatTime(recordedTime)}</span>}
+                </div>
 
                 {/* 总分 */}
                 <div className="text-center">

@@ -9,12 +9,21 @@ interface QuestionDetailProps {
     question_text: string;
     question_type: string;
     user_answer_transcript?: string;
+    duration_seconds?: number;
+    thinking_duration_seconds?: number;
     ai_score?: number;
     score_detail?: Record<string, number>;
     ai_evaluation?: string;
     reference_answer?: string;
     improvement_suggestion?: string;
   };
+}
+
+function fmtTime(s: number | undefined | null): string {
+  if (!s) return '-';
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return m > 0 ? `${m}:${sec.toString().padStart(2, '0')}` : `${sec}秒`;
 }
 
 const TYPE_LABELS: Record<string, string> = {
@@ -53,6 +62,18 @@ export default function QuestionDetail({ question }: QuestionDetailProps) {
 
       {expanded && (
         <div className="mt-4 space-y-4 border-t pt-4">
+          {/* 时长信息 */}
+          {(question.thinking_duration_seconds != null || question.duration_seconds != null) && (
+            <div className="flex items-center gap-4 text-xs text-gray-400">
+              {question.thinking_duration_seconds != null && (
+                <span>💭 思考 {fmtTime(question.thinking_duration_seconds)}</span>
+              )}
+              {question.duration_seconds != null && (
+                <span>⏱ 回答 {fmtTime(question.duration_seconds)}</span>
+              )}
+            </div>
+          )}
+
           {/* 你的回答 — 始终显示 */}
           <div>
             <h4 className="font-medium text-sm text-gray-500 mb-1">你的回答</h4>

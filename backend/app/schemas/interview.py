@@ -15,6 +15,7 @@ class QuestionItem(BaseModel):
     # 答题结果（评分后才有）
     user_answer_transcript: Optional[str] = None
     duration_seconds: Optional[int] = None
+    thinking_duration_seconds: Optional[int] = None
     ai_score: Optional[int] = None
     score_detail: Optional[dict] = None
     ai_evaluation: Optional[str] = None
@@ -41,3 +42,4 @@ class SubmitAnswerRequest(BaseModel):
     order_index: int
     answer_transcript: str = ""
     duration_seconds: int = 0
+    thinking_duration_seconds: int = 0
