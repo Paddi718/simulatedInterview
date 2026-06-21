@@ -119,13 +119,6 @@ function SessionContent() {
   const liveTextElRef = useRef<HTMLParagraphElement|null>(null);
   const stoppingManuallyRef = useRef(false);
 
-  useEffect(() => () => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    stopAll();
-    if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
-    try{(window as any).speechSynthesis?.cancel();}catch{}
-  }, []);
-
   const stopAll = () => {
     if (speechRef.current) { try { speechRef.current.stop(); } catch {} speechRef.current = null; }
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') { try { mediaRecorderRef.current.stop(); } catch {} }
@@ -133,20 +126,71 @@ function SessionContent() {
   };
 
   /* ---------- TTS ---------- */
+  const wsReadyRef = useRef(false);
+  const ttsQueueRef = useRef<{text:string;voice:string;speed:number}[]>([]);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
+
+  const stopTts = useCallback(() => {
+    // 停止当前播放
+    try { audioSourceRef.current?.stop(); } catch {}
+    audioSourceRef.current = null;
+    try { audioCtxRef.current?.close(); } catch {}
+    audioCtxRef.current = null;
+    setTtsPlaying(false);
+    ttsQueueRef.current = [];
+  }, []);
+
+  const ttsGenRef = useRef(0); // 用于标记最新一次 TTS 请求
+
   const playTts = async (buf: ArrayBuffer) => {
-    try { const c=new AudioContext(); const a=await c.decodeAudioData(buf.slice(0)); const s=c.createBufferSource(); s.buffer=a; s.connect(c.destination); setTtsPlaying(true); s.onended=()=>{setTtsPlaying(false);c.close();}; s.start(); } catch {}
+    stopTts();
+    const gen = ++ttsGenRef.current; // 当前播放的代际
+    const c = new AudioContext();
+    audioCtxRef.current = c;
+    try {
+      const a = await c.decodeAudioData(buf.slice(0));
+      // 如果启动了新的播放或者用户切题了，丢弃旧请求
+      if (gen !== ttsGenRef.current || !audioCtxRef.current) { c.close(); return; }
+      const s = c.createBufferSource();
+      audioSourceRef.current = s;
+      s.buffer = a;
+      s.connect(c.destination);
+      setTtsPlaying(true);
+      s.onended = () => { setTtsPlaying(false); c.close(); audioCtxRef.current = null; audioSourceRef.current = null; };
+      s.start();
+    } catch {
+      if (gen === ttsGenRef.current) setTtsPlaying(false);
+      try { c.close(); } catch {}
+      if (audioCtxRef.current === c) audioCtxRef.current = null;
+    }
   };
+
+  const flushTtsQueue = useCallback(() => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    const queue = ttsQueueRef.current;
+    while (queue.length > 0) {
+      const req = queue.shift()!;
+      ws.send(JSON.stringify({ type: 'tts_request', text: req.text, voice: req.voice, speed: req.speed }));
+    }
+  }, []);
 
   /* ---------- WebSocket ---------- */
   const connectWs = useCallback(() => {
     if (!interviewId) return;
     const t=localStorage.getItem('access_token'); if(!t) return;
-    if(wsRef.current&&wsRef.current.readyState!==WebSocket.OPEN){
-      try{wsRef.current.close();}catch{}
-    }
+    if(wsRef.current?.readyState===WebSocket.OPEN) return;
+    if(wsRef.current?.readyState===WebSocket.CONNECTING) return;
+    if(wsRef.current){ try{wsRef.current.close();}catch{} }
+    wsReadyRef.current = false;
     const ws=new WebSocket(`${getWsUrl()}/api/ws/interview/${interviewId}?token=${t}`);
     ws.binaryType='arraybuffer';
-    ws.onopen=()=>setWsConnected(true);
+    ws.onopen=()=>{
+      setWsConnected(true);
+      wsReadyRef.current = true;
+      flushTtsQueue();
+    };
     ws.onmessage=(e)=>{
       if(e.data instanceof ArrayBuffer){playTts(e.data);return;}
       try{const m=JSON.parse(e.data);
@@ -154,19 +198,26 @@ function SessionContent() {
         else if(m.type==='question_score'&&m.error)setPhase('review');
       }catch{}
     };
-    ws.onclose=()=>{setWsConnected(false);wsRef.current=null;};
-    ws.onerror=()=>{setWsConnected(false);wsRef.current=null;};
+    ws.onclose=()=>{setWsConnected(false);wsReadyRef.current=false;wsRef.current=null;};
+    ws.onerror=()=>{setWsConnected(false);wsReadyRef.current=false;wsRef.current=null;};
     wsRef.current=ws;
-  },[interviewId]);
+  },[interviewId, flushTtsQueue]);
 
+  // 使用 Edge-TTS 朗读（通过 WebSocket）
   const speak=useCallback((text:string)=>{
-    const ss=(window as any).speechSynthesis;
-    if(!ss)return;
-    ss.cancel();
-    const u=new SpeechSynthesisUtterance(text);
-    u.lang='zh-CN';u.rate=1.0;
-    ss.speak(u);
-  },[]);
+    if (!text) return;
+    stopTts(); // 先停掉当前播放
+    setTtsPlaying(true); // 立即标记为播放中，防止重复点击
+    const storedVoice=localStorage.getItem('tts_voice')||'zh-CN-XiaoxiaoNeural';
+    const storedSpeed=parseFloat(localStorage.getItem('tts_speed')||'1.0');
+    const ws=wsRef.current;
+    if(ws && ws.readyState===WebSocket.OPEN){
+      ws.send(JSON.stringify({type:'tts_request',text,voice:storedVoice,speed:storedSpeed}));
+      return;
+    }
+    ttsQueueRef.current.push({text,voice:storedVoice,speed:storedSpeed});
+    connectWs();
+  },[connectWs, stopTts]);
 
   /* ---------- Load ---------- */
   const loadInterview=useCallback(async()=>{
@@ -183,6 +234,16 @@ function SessionContent() {
   },[interviewId,router]);
   useEffect(()=>{loadInterview();connectWs();},[loadInterview,connectWs]);
 
+  // 卸载时清理所有资源
+  useEffect(() => () => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    stopAll();
+    stopTts();
+    ttsQueueRef.current = [];
+    if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
+    try{(window as any).speechSynthesis?.cancel();}catch{}
+  }, [stopTts]);
+
   // 自动朗读
   const [hasAutoRead, setHasAutoRead] = useState(false);
   useEffect(()=>{
@@ -193,7 +254,7 @@ function SessionContent() {
     speak(questions[currentIndex].question_text);
   },[phase,currentIndex,questions,hasAutoRead,speak]);
 
-  useEffect(()=>{try{(window as any).speechSynthesis?.cancel();}catch{}setHasAutoRead(false);},[currentIndex]);
+  useEffect(()=>{stopTts();try{(window as any).speechSynthesis?.cancel();}catch{}setHasAutoRead(false);},[currentIndex, stopTts]);
 
   /* ---------- Thinking timer ---------- */
   // 兜底：如果 moveToNextOrComplete 已启动计时器则跳过，否则在此启动
@@ -258,7 +319,7 @@ function SessionContent() {
     try{
       const blob=new Blob(chunksRef.current,{type:'audio/webm'});
       const buf=await blob.arrayBuffer();
-      const r=await api.post<{text:string}>(`/api/interview/${interviewId}/transcribe`,buf);
+      const r=await api.post<{text:string}>(`/api/interview/${interviewId}/transcribe?order_index=${currentIndex+1}`,buf);
       const asrText=r?.text||'';
       if(asrText&&asrText!==browserText&&asrText.length>browserText.length*0.5){
         setTranscript(asrText);

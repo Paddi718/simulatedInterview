@@ -13,6 +13,14 @@ from app.routers import document as doc_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    # 启动时清理过期 TTS 缓存
+    try:
+        from app.services.audio_cache import clean_expired_cache
+        deleted = await clean_expired_cache()
+        if deleted:
+            print(f"[Startup] Cleaned {deleted} expired TTS cache files")
+    except Exception:
+        pass
     yield
 
 app = FastAPI(
@@ -41,3 +49,10 @@ app.include_router(doc_router.router)
 @app.get("/api/health")
 async def health_check():
     return {"code": 0, "data": {"status": "ok"}, "message": "ok"}
+
+
+@app.get("/api/cache/stats")
+async def cache_stats():
+    from app.services.audio_cache import get_cache_stats
+    stats = await get_cache_stats()
+    return {"code": 0, "data": stats, "message": "ok"}

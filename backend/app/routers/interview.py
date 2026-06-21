@@ -4,7 +4,7 @@ import json
 import tempfile
 import os
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -132,6 +132,11 @@ async def delete_interview(
         await db.delete(interview)
         await db.commit()
         logger.info(f"[Delete] Successfully deleted interview {sid}")
+
+        # 清理磁盘上的录音文件（异步，不影响响应）
+        from app.services.audio_cache import clean_recording
+        asyncio.create_task(clean_recording(sid))
+
         return {"code": 0, "message": "ok"}
     except Exception as e:
         logger.error(f"[Delete] Delete commit failed for {sid}: {type(e).__name__}: {e}", exc_info=True)
@@ -530,8 +535,12 @@ async def transcribe_audio(
     request: Request,
     current_user: User = Depends(get_current_user),
 ):
-    """接收上传的音频文件(webm/opus)，返回 FunASR 转写文本"""
+    """接收上传的音频文件(webm/opus)，返回 FunASR 转写文本。同时保存录音用于回放。"""
     from app.services.asr_service import transcribe_pcm
+    from app.services.audio_cache import save_recording
+
+    # 获取题目序号（用于回放）
+    order_index = int(request.query_params.get("order_index", 0))
 
     body = await request.body()
     if not body or len(body) < 100:
@@ -539,14 +548,13 @@ async def transcribe_audio(
 
     tmp_path = None
     wav_path = None
+    webm_bytes = body
     try:
-        # 写入临时 webm 文件
         with tempfile.NamedTemporaryFile(suffix='.webm', delete=False) as f:
             f.write(body)
             tmp_path = f.name
 
         wav_path = tmp_path + '.wav'
-        # ffmpeg: webm → 16kHz mono WAV
         proc = await asyncio.create_subprocess_exec(
             'ffmpeg', '-y', '-i', tmp_path,
             '-ar', '16000', '-ac', '1', '-f', 'wav', wav_path,
@@ -559,6 +567,8 @@ async def transcribe_audio(
                 wav_bytes = f.read()
             pcm_bytes = wav_bytes[44:]
             text = await transcribe_pcm(pcm_bytes)
+            # 保存原始录音供回放
+            asyncio.create_task(save_recording(str(interview_id), order_index, webm_bytes))
             return {"code": 0, "data": {"text": text}, "message": "ok"}
 
         return {"code": 0, "data": {"text": ""}, "message": "ok"}
@@ -571,6 +581,29 @@ async def transcribe_audio(
                     os.unlink(p)
                 except OSError:
                     pass
+
+
+@router.get("/{interview_id}/recording/{order_index}")
+async def get_question_recording(
+    interview_id: uuid.UUID,
+    order_index: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取指定题目的录音文件，用于回放"""
+    # 验证面试属于当前用户
+    result = await db.execute(
+        select(Interview).where(Interview.id == interview_id, Interview.user_id == current_user.id)
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Interview not found")
+
+    from app.services.audio_cache import get_recording
+    audio = await get_recording(str(interview_id), order_index)
+    if audio is None:
+        raise HTTPException(status_code=404, detail="Recording not found")
+
+    return Response(content=audio, media_type="audio/webm")
 
 
 @router.post("/{interview_id}/rescore", response_model=InterviewResponse)

@@ -24,6 +24,10 @@ class UserResponse(BaseModel):
 
 
 class UpdateUserRequest(BaseModel):
+    username: str | None = Field(None, min_length=2, max_length=50)
+    email: str | None = Field(None, max_length=255)
+    current_password: str | None = None
+    new_password: str | None = None
     tts_preference: dict | None = None
     llm_config: dict | None = None
 

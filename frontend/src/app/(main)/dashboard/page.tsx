@@ -12,7 +12,6 @@ import {
   History,
   FileText,
   Settings,
-  LogOut,
   Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -98,11 +97,6 @@ export default function DashboardPage() {
     };
   }, [router]);
 
-  const handleLogout = () => {
-    localStorage.removeItem('access_token');
-    router.push('/login');
-  };
-
   // Stats
   const totalInterviews = interviews.length;
   const averageScore =
@@ -133,34 +127,7 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
-      {/* Navbar */}
-      <header className="border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-brand-500 flex items-center justify-center">
-                <Briefcase className="w-4 h-4 text-white" />
-              </div>
-              <span className="font-semibold text-gray-900 dark:text-gray-100">
-                AI 模拟面试
-              </span>
-            </div>
-            <div className="flex items-center gap-4">
-              <span className="text-sm text-gray-500 dark:text-gray-400">
-                {user.username}
-              </span>
-              <button
-                onClick={handleLogout}
-                className="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 transition-colors"
-              >
-                <LogOut className="w-4 h-4" />
-                退出
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
+      {/* 导航栏已移至侧边栏，此处不再重复 */}
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Welcome Header */}
         <div className="mb-8">

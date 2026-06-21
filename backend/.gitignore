@@ -1,0 +1,19 @@
+# Audio cache & recordings
+data/audio/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Models (FunASR)
+models/
+
+# Environment
+.env.local
+.env.production
+
+# IDE
+.vscode/
+.idea/

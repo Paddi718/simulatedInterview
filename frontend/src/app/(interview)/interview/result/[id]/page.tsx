@@ -479,7 +479,7 @@ export default function ResultPage() {
             <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">逐题详情</h2>
           </div>
           {result.questions.map((q) => (
-            <QuestionDetail key={q.order_index} question={q} />
+            <QuestionDetail key={q.order_index} question={q} interviewId={result.id} />
           ))}
         </div>
 

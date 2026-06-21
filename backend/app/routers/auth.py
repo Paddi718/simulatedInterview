@@ -63,6 +63,22 @@ async def update_me(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # 密码修改（需要当前密码验证）
+    if data.current_password is not None:
+        if not verify_password(data.current_password, current_user.password_hash):
+            raise HTTPException(status_code=400, detail="当前密码错误")
+        if not data.new_password or len(data.new_password) < 6:
+            raise HTTPException(status_code=400, detail="新密码至少 6 位")
+        current_user.password_hash = hash_password(data.new_password)
+    if data.username is not None:
+        result = await db.execute(
+            select(User).where(User.username == data.username, User.id != current_user.id)
+        )
+        if result.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="用户名已被占用")
+        current_user.username = data.username
+    if data.email is not None:
+        current_user.email = data.email
     if data.tts_preference is not None:
         current_user.tts_preference = data.tts_preference
     if data.llm_config is not None:
@@ -70,6 +86,13 @@ async def update_me(
     await db.commit()
     await db.refresh(current_user)
     return _user_response(current_user)
+
+
+@router.get("/voices")
+async def list_voices(current_user: User = Depends(get_current_user)):
+    """返回可用的 TTS 音色列表"""
+    from app.services.tts_service import SUPPORTED_VOICES
+    return {"code": 0, "data": SUPPORTED_VOICES, "message": "ok"}
 
 
 @router.post("/test-llm")

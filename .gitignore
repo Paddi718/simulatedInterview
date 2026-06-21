@@ -11,3 +11,4 @@ venv/
 *.db
 models/
 *.pt
+data/audio/

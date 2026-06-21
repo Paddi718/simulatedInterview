@@ -33,7 +33,14 @@ def _speed_to_rate(speed: float) -> str:
 
 
 async def synthesize_speech(text: str, voice: str = "zh-CN-XiaoxiaoNeural", speed: float = 1.0) -> bytes:
-    """Edge TTS 文本转语音，返回 MP3 音频数据（免费）"""
+    """Edge TTS 文本转语音，带缓存：先查缓存，命中直接返回，未命中则联网合成后写缓存"""
+    # 1. 查缓存
+    from app.services.audio_cache import get_cached_tts, save_tts_cache
+    cached = await get_cached_tts(text, voice, speed)
+    if cached is not None:
+        return cached
+
+    # 2. 缓存未命中 → 联网合成
     rate = _speed_to_rate(speed)
     communicate = edge_tts.Communicate(text, voice, rate=rate)
 
@@ -42,11 +49,17 @@ async def synthesize_speech(text: str, voice: str = "zh-CN-XiaoxiaoNeural", spee
         if chunk["type"] == "audio":
             buffer.write(chunk["data"])
 
-    return buffer.getvalue()
+    audio_bytes = buffer.getvalue()
+
+    # 3. 写入缓存
+    if audio_bytes and len(audio_bytes) > 220:
+        await save_tts_cache(text, voice, speed, audio_bytes)
+
+    return audio_bytes
 
 
 async def stream_synthesize(text: str, voice: str = "zh-CN-XiaoxiaoNeural", speed: float = 1.0):
-    """Edge TTS 流式合成，返回音频流"""
+    """Edge TTS 流式合成（不走缓存，因为流式场景需要即时响应）"""
     rate = _speed_to_rate(speed)
     communicate = edge_tts.Communicate(text, voice, rate=rate)
 

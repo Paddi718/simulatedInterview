@@ -24,7 +24,6 @@ const navItems = [
   { label: '开始面试', href: '/interview/prepare', icon: PlayCircle },
   { label: '历史记录', href: '/history', icon: History },
   { label: '简历管理', href: '/resume', icon: FileText },
-  { label: '设置', href: '/settings', icon: Settings },
 ]
 
 export default function Sidebar() {
@@ -74,7 +73,16 @@ export default function Sidebar() {
       </nav>
 
       {/* Bottom section */}
-      <div className="border-t border-gray-100 dark:border-gray-800 px-4 py-3">
+      <div className="border-t border-gray-100 dark:border-gray-800 px-3 py-3 space-y-1">
+        {/* Settings */}
+        <Link
+          href="/settings"
+          className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
+        >
+          <Settings className="h-4 w-4 shrink-0" strokeWidth={1.5} />
+          <span>设置</span>
+        </Link>
+
         {/* Theme toggle */}
         <button
           onClick={toggleTheme}
@@ -88,23 +96,17 @@ export default function Sidebar() {
           <span>{theme === 'dark' ? '浅色模式' : '深色模式'}</span>
         </button>
 
-        {/* User area */}
-        <div className="mt-2 flex items-center gap-3 rounded-lg px-3 py-2">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-200 text-xs font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-300">
-            U
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
-              用户
-            </p>
-          </div>
-          <button
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
-            title="退出登录"
-          >
-            <LogOut className="h-4 w-4" strokeWidth={1.5} />
-          </button>
-        </div>
+        {/* Logout */}
+        <button
+          onClick={() => {
+            localStorage.removeItem('access_token');
+            window.location.href = '/login';
+          }}
+          className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-400 transition-colors hover:bg-gray-100 hover:text-red-500 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-red-400"
+        >
+          <LogOut className="h-4 w-4 shrink-0" strokeWidth={1.5} />
+          <span>退出登录</span>
+        </button>
       </div>
     </div>
   )

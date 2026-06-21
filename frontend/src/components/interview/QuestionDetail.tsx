@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import {
   ChevronDown, ChevronUp, Clock, Brain, MessageSquare,
   Star, Target, Zap, FileText, Lightbulb, BookOpen,
-  Sparkles
+  Sparkles, Play, Square, Loader2
 } from 'lucide-react';
 
 interface QuestionDetailProps {
@@ -21,6 +21,7 @@ interface QuestionDetailProps {
     reference_answer?: string;
     improvement_suggestion?: string;
   };
+  interviewId?: string;
 }
 
 function fmtTime(s: number | undefined | null): string {
@@ -54,9 +55,44 @@ const TYPE_COLORS: Record<string, string> = {
   career: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400',
 };
 
-export default function QuestionDetail({ question }: QuestionDetailProps) {
+export default function QuestionDetail({ question, interviewId }: QuestionDetailProps) {
   const [expanded, setExpanded] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const [loadingAudio, setLoadingAudio] = useState(false);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+
+  const handlePlay = async () => {
+    if (playing || loadingAudio || !interviewId) return;
+    setLoadingAudio(true);
+    try {
+      const token = localStorage.getItem('access_token');
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      const url = `${apiBase}/api/interview/${interviewId}/recording/${question.order_index}`;
+      const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      if (!res.ok) { setLoadingAudio(false); return; }
+      const buf = await res.arrayBuffer();
+      const ctx = new AudioContext();
+      audioCtxRef.current = ctx;
+      const audio = await ctx.decodeAudioData(buf);
+      const source = ctx.createBufferSource();
+      source.buffer = audio;
+      source.connect(ctx.destination);
+      setLoadingAudio(false);
+      setPlaying(true);
+      source.onended = () => { setPlaying(false); ctx.close(); audioCtxRef.current = null; };
+      source.start();
+    } catch { setLoadingAudio(false); }
+  };
+
+  const handleStop = () => {
+    try { audioCtxRef.current?.close(); } catch {}
+    audioCtxRef.current = null;
+    setPlaying(false);
+    setLoadingAudio(false);
+  };
+
   const TypeIcon = TYPE_ICONS[question.question_type] || Star;
+  const hasTranscript = question.user_answer_transcript && question.user_answer_transcript.trim();
 
   return (
     <div className="rounded-2xl border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm overflow-hidden transition-all duration-200 hover:shadow-md">
@@ -118,8 +154,28 @@ export default function QuestionDetail({ question }: QuestionDetailProps) {
             <h4 className="font-medium text-xs text-gray-500 dark:text-gray-400 mb-2 uppercase tracking-wider flex items-center gap-1.5">
               <MessageSquare className="w-3.5 h-3.5" />
               你的回答
+              {hasTranscript && interviewId && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); playing ? handleStop() : handlePlay(); }}
+                  disabled={loadingAudio}
+                  className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-medium transition-colors
+                    bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400
+                    hover:bg-brand-100 hover:text-brand-600 dark:hover:bg-brand-900/30 dark:hover:text-brand-400
+                    disabled:opacity-50"
+                  title="回放录音"
+                >
+                  {loadingAudio ? (
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                  ) : playing ? (
+                    <Square className="w-3 h-3" />
+                  ) : (
+                    <Play className="w-3 h-3" />
+                  )}
+                  {playing ? '播放中' : loadingAudio ? '加载中' : '回放'}
+                </button>
+              )}
             </h4>
-            {question.user_answer_transcript ? (
+            {hasTranscript ? (
               <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed bg-gray-50 dark:bg-gray-800/50 rounded-xl p-3.5 border border-gray-100 dark:border-gray-800">
                 {question.user_answer_transcript}
               </p>
