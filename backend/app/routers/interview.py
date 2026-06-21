@@ -19,12 +19,36 @@ from app.schemas.interview import (
 )
 from app.utils.auth import get_current_user
 from app.services.interview_engine import InterviewEngine
+from app.services.scoring_orchestrator import (
+    run_scoring_pipeline, get_sse_event, cleanup_sse_event,
+)
 
 router = APIRouter(prefix="/api/interview", tags=["interview"])
 
-# SSE 事件通知：interview_id → asyncio.Event（用于推送总评完成）
-_sse_events: dict[str, asyncio.Event] = {}
+# 后台评分 task 映射：interview_id (str) → asyncio.Task，用于取消和防 GC
+_bg_task_map: dict[str, asyncio.Task] = {}
 
+
+def _register_bg_task(interview_id: str, task: asyncio.Task):
+    """注册后台任务，自动在完成时清理"""
+    _bg_task_map[interview_id] = task
+
+    def _cleanup(t: asyncio.Task):
+        _bg_task_map.pop(interview_id, None)
+
+    task.add_done_callback(_cleanup)
+
+
+async def _cancel_bg_task(interview_id: str):
+    """取消指定面试的后台评分任务"""
+    task = _bg_task_map.get(interview_id)
+    if task and not task.done():
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+    _bg_task_map.pop(interview_id, None)
 
 
 @router.get("/list")
@@ -69,35 +93,51 @@ async def delete_interview(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    print(f"[Delete] id={interview_id} user_id={current_user.id}")
+    import logging
+    logger = logging.getLogger(__name__)
+
+    sid = str(interview_id)
+    uid = str(current_user.id)
+    logger.info(f"[Delete] Request to delete interview {sid} by user {uid}")
+
+    # 1. 取消该面试的后台评分任务（如果正在运行）
+    await _cancel_bg_task(sid)
+
+    # 2. 清除 SSE 事件
+    cleanup_sse_event(sid)
+
+    # 3. 查找面试记录
     result = await db.execute(
         select(Interview).where(
             Interview.id == interview_id, Interview.user_id == current_user.id
         )
     )
     interview = result.scalar_one_or_none()
+
     if not interview:
-        # 再查一下是否被用户ID过滤掉了
-        check = await db.execute(select(Interview).where(Interview.id == interview_id))
-        exists = check.scalar_one_or_none()
-        print(f"[Delete] exists_without_user_filter={exists is not None}")
-        if exists:
-            raise HTTPException(status_code=403, detail="Not your interview")
-        raise HTTPException(status_code=404, detail="Interview not found")
+        logger.info(f"[Delete] Interview {sid} not found, idempotent success")
+        return {"code": 0, "message": "ok"}
 
-    # 先清理关联的面试题目（手动 cascade，确保后台线程不影响）
-    q_result = await db.execute(
-        select(InterviewQuestion).where(InterviewQuestion.interview_id == interview_id)
-    )
-    for q in q_result.scalars().all():
-        await db.delete(q)
-    await db.flush()
+    logger.info(f"[Delete] Found interview {sid}: status={interview.status}, scoring_status={interview.scoring_status}")
 
-    await db.delete(interview)
-    await db.commit()
-    # 清理 SSE 事件
-    _sse_events.pop(str(interview_id), None)
-    return {"code": 0, "message": "ok"}
+    # 4. 清除 scoring_status（防止任何残留任务冲突）
+    if interview.scoring_status is not None:
+        logger.info(f"[Delete] Clearing scoring_status ({interview.scoring_status}) for interview {sid}")
+        interview.scoring_status = None
+        await db.flush()
+
+    # 5. 级联删除（ORM cascade + DB ondelete CASCADE 双保险）
+    logger.info(f"[Delete] Executing cascade delete for interview {sid}")
+    try:
+        await db.delete(interview)
+        await db.commit()
+        logger.info(f"[Delete] Successfully deleted interview {sid}")
+        return {"code": 0, "message": "ok"}
+    except Exception as e:
+        logger.error(f"[Delete] Delete commit failed for {sid}: {type(e).__name__}: {e}", exc_info=True)
+        await db.rollback()
+        # 重新抛出，让前端知道删除失败，触发乐观删除回滚
+        raise HTTPException(status_code=500, detail=f"删除失败: {type(e).__name__}")
 
 
 @router.post("/{interview_id}/retry", status_code=201)
@@ -138,7 +178,6 @@ async def retry_interview(
         db.add(new_q)
 
     await db.commit()
-    await db.refresh(new_interview)
 
     return {"code": 0, "data": {"id": str(new_interview.id)}, "message": "ok"}
 
@@ -297,54 +336,50 @@ async def submit_answer(
         thinking_duration=data.thinking_duration_seconds,
     )
 
-    # 后台评分：不阻塞用户，用独立线程+session评分
+    # 后台评分：使用 asyncio.create_task（与主事件循环共享，避免线程+event_loop 的兼容问题）
     if data.answer_transcript and data.answer_transcript.strip():
-        import threading
         _q_id = question.id
         _i_id = interview_id
 
-        def _bg_score_question():
-            import asyncio
-            async def _run():
-                from app.database import async_session_factory
-                from app.services.scoring_service import score_question as do_score
-                from app.models.resume import Resume as RModel
-                from app.models.job_description import JobDescription as JDModel
-                async with async_session_factory() as bg_db:
-                    try:
-                        qr = await bg_db.execute(
-                            select(InterviewQuestion).where(InterviewQuestion.id == _q_id)
-                        )
-                        q = qr.scalar_one_or_none()
-                        if not q or q.ai_score is not None:
-                            return  # 已评分或不存在
-                        ir = await bg_db.execute(select(Interview).where(Interview.id == _i_id))
-                        i = ir.scalar_one_or_none()
-                        if not i:
-                            return
-                        rr = await bg_db.execute(select(RModel).where(RModel.id == i.resume_id))
-                        resume = rr.scalar_one_or_none()
-                        resume_data = resume.parsed_data if resume else {}
-                        jr = await bg_db.execute(select(JDModel).where(JDModel.id == i.jd_id))
-                        jd = jr.scalar_one_or_none()
-                        jd_data = jd.parsed_data if jd else {}
-                        scores = await do_score(q, resume_data, jd_data)
-                        q.ai_score = scores.get("total_score", 0)
-                        q.score_detail = {
-                            k: v for k, v in scores.items()
-                            if k in ["content_completeness", "professionalism", "expression", "star_method"]
-                        }
-                        q.ai_evaluation = scores.get("evaluation", "")
-                        q.reference_answer = scores.get("reference_answer", "")
-                        q.improvement_suggestion = scores.get("improvement_suggestion", "")
-                        await bg_db.commit()
-                    except Exception as e:
-                        print(f"[BG Score] Question scoring failed: {e}")
-            loop = asyncio.new_event_loop()
-            loop.run_until_complete(_run())
-            loop.close()
+        async def _bg_score_question():
+            from app.database import async_session_factory
+            from app.services.scoring_service import score_question as do_score
+            from app.models.resume import Resume as RModel
+            from app.models.job_description import JobDescription as JDModel
+            async with async_session_factory() as bg_db:
+                try:
+                    qr = await bg_db.execute(
+                        select(InterviewQuestion).where(InterviewQuestion.id == _q_id)
+                    )
+                    q = qr.scalar_one_or_none()
+                    if not q or q.ai_score is not None:
+                        return  # 已评分或不存在
+                    ir = await bg_db.execute(select(Interview).where(Interview.id == _i_id))
+                    i = ir.scalar_one_or_none()
+                    if not i:
+                        return
+                    rr = await bg_db.execute(select(RModel).where(RModel.id == i.resume_id))
+                    resume = rr.scalar_one_or_none()
+                    resume_data = resume.parsed_data if resume else {}
+                    jr = await bg_db.execute(select(JDModel).where(JDModel.id == i.jd_id))
+                    jd = jr.scalar_one_or_none()
+                    jd_data = jd.parsed_data if jd else {}
+                    scores = await do_score(q, resume_data, jd_data)
+                    q.ai_score = scores.get("total_score", 0)
+                    q.score_detail = {
+                        k: v for k, v in scores.items()
+                        if k in ["content_completeness", "professionalism", "expression", "star_method"]
+                    }
+                    q.ai_evaluation = scores.get("evaluation", "")
+                    q.reference_answer = scores.get("reference_answer", "")
+                    q.improvement_suggestion = scores.get("improvement_suggestion", "")
+                    await bg_db.commit()
+                except Exception as e:
+                    print(f"[BG Score] Question scoring failed: {e}")
 
-        threading.Thread(target=_bg_score_question, daemon=True).start()
+        # 保持 task 引用防止被 GC（模块级 _bg_task_map）
+        task = asyncio.create_task(_bg_score_question())
+        _register_bg_task(f"{_i_id}_q{data.order_index}", task)
 
     return {"code": 0, "data": {"id": str(question.id)}, "message": "ok"}
 
@@ -362,65 +397,33 @@ async def complete_interview(
     if not interview:
         raise HTTPException(status_code=404, detail="Interview not found")
 
-    # 幂等保护：如果已在评分或已完成评分，不重复启动
-    if interview.scoring_status in ("scoring_questions", "scoring_overview", "done"):
+    # 原子"认领"评分权：只有 scoring_status 为 None 的才能被认领，防止并发重复创建 task
+    from sqlalchemy import update as sql_update
+    claimed = await db.execute(
+        sql_update(Interview)
+        .where(Interview.id == interview_id, Interview.scoring_status == None)
+        .values(scoring_status="pending")
+    )
+    await db.commit()
+    if claimed.rowcount == 0:
+        # 已被认领（或已评分完成/失败），重新查询返回当前状态
+        reloaded = await db.execute(
+            select(Interview).where(Interview.id == interview_id)
+        )
+        interview = reloaded.scalar_one_or_none()
+        if not interview:
+            raise HTTPException(status_code=404, detail="Interview not found")
         return await _interview_to_response(interview, db)
 
+    # 标记面试完成
     interview = await InterviewEngine.complete_interview(db, interview_id)
 
-    # 标记评分开始（列可能不存在，失败不阻塞流程）
-    try:
-        interview.scoring_status = "pending"
-        await db.commit()
-    except Exception:
-        pass
+    # 确保 SSE 事件已创建
+    get_sse_event(str(interview_id))
 
-    # 创建 SSE 通知事件
-    event = asyncio.Event()
-    _sse_events[str(interview_id)] = event
-    _main_loop = asyncio.get_running_loop()
-
-    # 用线程池后台评分，避免 asyncio task 被取消
-    import threading
-    def _bg_score():
-        import asyncio
-        async def _run():
-            from app.database import async_session_factory
-            from app.services.scoring_service import run_full_scoring as _run_scoring
-            async with async_session_factory() as bg_db:
-                # 尝试更新状态（失败不影响评分流程）
-                try:
-                    ir = await bg_db.execute(select(Interview).where(Interview.id == interview_id))
-                    i = ir.scalar_one_or_none()
-                    if i:
-                        i.scoring_status = "scoring_questions"
-                        await bg_db.commit()
-                except Exception:
-                    pass  # scoring_status 列可能不存在，忽略
-
-                # 执行评分（核心逻辑，必须执行）
-                try:
-                    await _run_scoring(bg_db, interview_id)
-                except Exception as e:
-                    print(f"[Complete] run_full_scoring failed: {e}")
-
-                # 尝试更新最终状态
-                try:
-                    ir2 = await bg_db.execute(select(Interview).where(Interview.id == interview_id))
-                    i2 = ir2.scalar_one_or_none()
-                    if i2:
-                        i2.scoring_status = "done"
-                        await bg_db.commit()
-                except Exception:
-                    pass
-
-            # 通知 SSE 监听者（无论评分成功与否都通知）
-            _main_loop.call_soon_threadsafe(event.set)
-        loop = asyncio.new_event_loop()
-        loop.run_until_complete(_run())
-        loop.close()
-
-    threading.Thread(target=_bg_score, daemon=True).start()
+    # 使用 asyncio.create_task 启动后台评分（不阻塞响应）
+    task = asyncio.create_task(run_scoring_pipeline(interview_id))
+    _register_bg_task(str(interview_id), task)
 
     return await _interview_to_response(interview, db)
 
@@ -431,10 +434,15 @@ async def stream_interview_result(
     request: Request,
     token: str = "",
 ):
-    """SSE: 实时推送面试总评完成事件。前端 EventSource 监听。
-    EventSource 不支持 Authorization header，token 通过 query string 传递。
+    """SSE: 实时推送面试评分进度和完成事件。
+
+    事件类型:
+    - heartbeat: 每 5s 发送，保活
+    - progress: 评分进度更新 {phase, progress}
+    - completed: 评分完成 {total_score, dimension_scores, ai_overview, resume_suggestions}
+    - timeout: 60s 超时，前端应降级为轮询
     """
-    # 鉴权：从 query string 或 header 获取 token 并手动解码
+    # 鉴权
     from jose import JWTError, jwt
     from app.config import get_settings
     settings = get_settings()
@@ -450,29 +458,69 @@ async def stream_interview_result(
         return Response(status_code=401, headers={"Content-Type": "text/plain"})
 
     sid = str(interview_id)
-    event = _sse_events.get(sid)
-    if not event:
-        event = asyncio.Event()
-        _sse_events[sid] = event
+    event = get_sse_event(sid)
 
     async def event_generator():
+        heartbeat_interval = 5  # 每 5 秒心跳
+        max_wait = 60  # 最多等待 60 秒
+
         try:
-            # 等待 scoring 完成（最多 60s）
-            await asyncio.wait_for(event.wait(), timeout=60.0)
-            # 推送完成事件（无论 overview 是否已生成，始终返回最新数据）
-            async with async_session_factory() as s:
-                r = await s.execute(select(Interview).where(Interview.id == interview_id))
-                i = r.scalar_one_or_none()
-                yield f"data: {json.dumps({'type': 'overview_ready', 'total_score': i.total_score if i else None, 'dimension_scores': i.dimension_scores if i else None, 'ai_overview': i.ai_overview if i else None, 'resume_suggestions': i.resume_suggestions if i else None})}\n\n"
-        except asyncio.TimeoutError:
-            yield f"data: {json.dumps({'type': 'timeout'})}\n\n"
-        finally:
-            _sse_events.pop(sid, None)
+            # 循环等待 event.set()，同时发送心跳
+            elapsed = 0
+            while elapsed < max_wait:
+                # 等待 event 或 heartbeat 超时
+                try:
+                    await asyncio.wait_for(event.wait(), timeout=heartbeat_interval)
+                    # event.set() 被调用 → 推送最终结果
+                    async with async_session_factory() as s:
+                        r = await s.execute(
+                            select(Interview).where(Interview.id == interview_id)
+                        )
+                        i = r.scalar_one_or_none()
+                        yield (
+                            f"data: {json.dumps({'type': 'completed', 'total_score': i.total_score if i else None, 'dimension_scores': i.dimension_scores if i else None, 'ai_overview': i.ai_overview if i else None, 'resume_suggestions': i.resume_suggestions if i else None, 'scoring_status': i.scoring_status if i else None})}\n\n"
+                        )
+                    return
+                except asyncio.TimeoutError:
+                    # heartbeat: 检查当前评分状态
+                    elapsed += heartbeat_interval
+                    try:
+                        async with async_session_factory() as s:
+                            r = await s.execute(
+                                select(Interview).where(Interview.id == interview_id)
+                            )
+                            i = r.scalar_one_or_none()
+                            if i:
+                                yield (
+                                    f"data: {json.dumps({'type': 'progress', 'scoring_status': i.scoring_status, 'scoring_progress': i.scoring_progress, 'total_score': i.total_score})}\n\n"
+                                )
+                                # 如果已经 done/failed，提前退出（event 可能已被之前的连接消费）
+                                if i.scoring_status in ("done", "failed"):
+                                    yield (
+                                        f"data: {json.dumps({'type': 'completed', 'total_score': i.total_score, 'dimension_scores': i.dimension_scores, 'ai_overview': i.ai_overview, 'resume_suggestions': i.resume_suggestions, 'scoring_status': i.scoring_status})}\n\n"
+                                    )
+                                    return
+                    except Exception:
+                        # 心跳查询失败不中断 SSE
+                        yield f"data: {json.dumps({'type': 'heartbeat'})}\n\n"
+            else:
+                # 超时
+                yield f"data: {json.dumps({'type': 'timeout'})}\n\n"
+        except asyncio.CancelledError:
+            # 客户端断开连接
+            pass
+        except Exception as e:
+            print(f"[SSE] Error: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
 
     return StreamingResponse(
         event_generator(),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 
@@ -531,8 +579,43 @@ async def rescore_interview(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    from app.services.scoring_service import run_full_scoring
-    interview = await run_full_scoring(db, interview_id)
+    """重新评分：重置评分状态并启动后台评分流水线"""
+    result = await db.execute(
+        select(Interview).where(Interview.id == interview_id, Interview.user_id == current_user.id)
+    )
+    interview = result.scalar_one_or_none()
+    if not interview:
+        raise HTTPException(status_code=404, detail="Interview not found")
+
+    # 重置评分状态
+    interview.scoring_status = "pending"
+    interview.scoring_progress = None
+    interview.scoring_error = None
+    interview.total_score = None
+    interview.dimension_scores = None
+    interview.ai_overview = None
+    interview.resume_suggestions = None
+
+    # 清除已有评分数据
+    q_result = await db.execute(
+        select(InterviewQuestion).where(InterviewQuestion.interview_id == interview_id)
+    )
+    for q in q_result.scalars().all():
+        q.ai_score = None
+        q.score_detail = None
+        q.ai_evaluation = None
+        q.reference_answer = None
+        q.improvement_suggestion = None
+
+    await db.commit()
+
+    # 确保 SSE 事件已创建
+    get_sse_event(str(interview_id))
+
+    # 启动后台评分
+    task = asyncio.create_task(run_scoring_pipeline(interview_id))
+    _register_bg_task(str(interview_id), task)
+
     return await _interview_to_response(interview, db)
 
 
@@ -571,4 +654,7 @@ async def _interview_to_response(interview: Interview, db: AsyncSession) -> Inte
         resume_suggestions=interview.resume_suggestions,
         questions=questions,
         created_at=interview.created_at.isoformat(),
+        scoring_status=interview.scoring_status,
+        scoring_progress=interview.scoring_progress,
+        scoring_error=interview.scoring_error,
     )

@@ -37,7 +37,7 @@ async def llm_chat(
         "temperature": temperature,
     }
 
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    async with httpx.AsyncClient(timeout=90.0) as client:
         resp = await client.post(
             f"{api_base or settings.llm_api_base}/chat/completions",
             headers=headers,

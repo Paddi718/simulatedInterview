@@ -10,7 +10,7 @@ class InterviewDocument(Base):
     __tablename__ = "interview_documents"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    interview_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("interviews.id"), nullable=False)
+    interview_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("interviews.id", ondelete="CASCADE"), nullable=False)
     format: Mapped[str] = mapped_column(String(10), nullable=False)
     file_path: Mapped[str] = mapped_column(Text, nullable=False)
     file_size: Mapped[int | None] = mapped_column(Integer, nullable=True)

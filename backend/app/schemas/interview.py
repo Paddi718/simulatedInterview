@@ -33,6 +33,9 @@ class InterviewResponse(BaseModel):
     resume_suggestions: Optional[str] = None
     questions: list[QuestionItem] = []
     created_at: str
+    scoring_status: Optional[str] = None
+    scoring_progress: Optional[str] = None
+    scoring_error: Optional[str] = None
 
     class Config:
         from_attributes = True

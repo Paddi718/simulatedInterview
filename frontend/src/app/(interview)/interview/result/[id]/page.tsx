@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   ChevronLeft, Loader2, Award, AlertCircle, Sparkles,
   Clock, FileText, BookOpen, Target,
-  Zap, Brain, Star, BarChart3, RefreshCw
+  Zap, Brain, Star, BarChart3, RefreshCw, AlertTriangle,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import ScoreRadar from '@/components/interview/ScoreRadar';
@@ -24,6 +24,9 @@ interface InterviewResult {
   total_score: number | null; dimension_scores: Record<string, number> | null;
   ai_overview: string | null; resume_suggestions: string | null;
   questions: QuestionItem[]; created_at: string;
+  scoring_status?: string | null;
+  scoring_progress?: string | null;
+  scoring_error?: string | null;
 }
 
 const DIFFICULTY_LABEL: Record<string, string> = {
@@ -35,90 +38,158 @@ const DIFFICULTY_CLASS: Record<string, string> = {
   hard: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-400 dark:border-red-800',
 };
 
+// 轮询间隔（毫秒）
+const POLL_INTERVAL = 2500;
+// 最大轮询次数（2.5s * 48 = 120s，足够覆盖评分+总评生成）
+const MAX_POLLS = 48;
+
+/**
+ * 评分阶段对应的中文描述
+ */
+function scoringPhaseLabel(status: string | null | undefined): string {
+  switch (status) {
+    case 'pending': return '准备评分...';
+    case 'scoring_questions': return 'AI 正在逐题评分';
+    case 'aggregating': return '正在计算总分';
+    case 'generating_overview': return 'AI 正在生成总评和简历建议';
+    case 'done': return '评分完成';
+    case 'failed': return '评分失败';
+    default: return '分析中...';
+  }
+}
+
 export default function ResultPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
+
   const [result, setResult] = useState<InterviewResult | null>(null);
   const [loading, setLoading] = useState(true);
-  const [scoring, setScoring] = useState(false);
+  const [polling, setPolling] = useState(false);
+  const [pollCount, setPollCount] = useState(0);
   const [error, setError] = useState('');
-  const router = useRouter();
-  const pollRef = useRef(0);
+  const [retrying, setRetrying] = useState(false);
 
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelledRef = useRef(false);
+
+  // 清理定时器
+  const clearPollTimer = useCallback(() => {
+    if (pollTimerRef.current) {
+      clearTimeout(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  }, []);
+
+  // 初始加载
   useEffect(() => {
-    if (!localStorage.getItem('access_token')) { router.push('/login'); return; }
-    loadData();
-  }, [id]);
+    if (!localStorage.getItem('access_token')) {
+      router.push('/login');
+      return;
+    }
 
-  const loadData = async () => {
-    try {
-      const data = await api.get<InterviewResult>(`/api/interview/${id}`);
-      // 未完成的面试 → 跳转续答，不展示结果页
-      if (data.status !== 'completed') {
-        router.replace(`/interview/session?id=${id}`);
-        return;
-      }
-      setResult(data);
-      setLoading(false);
-      if (data.total_score === null && !data.dimension_scores) {
-        setScoring(true);
-        startSSE();
-        pollForScores();
-      }
-    } catch (err: any) { setError(err.message || '加载失败'); setLoading(false); }
-  };
+    let cancelled = false;
+    cancelledRef.current = false;
 
-  const startSSE = () => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
-    if (!token) return;
-    const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-    const url = `${apiBase}/api/interview/${id}/stream?token=${encodeURIComponent(token)}`;
-    try {
-      const es = new EventSource(url);
-      es.onmessage = async (e) => {
-        try {
-          const msg = JSON.parse(e.data);
-          if (msg.type === 'overview_ready' || msg.type === 'done') {
-            setResult((prev) => prev ? {
-              ...prev,
-              total_score: msg.total_score ?? prev.total_score,
-              dimension_scores: msg.dimension_scores ?? prev.dimension_scores,
-              ai_overview: msg.ai_overview ?? prev.ai_overview,
-              resume_suggestions: msg.resume_suggestions ?? prev.resume_suggestions,
-            } : prev);
-            setScoring(false);
-            es.close();
-          } else if (msg.type === 'timeout') {
-            const data = await api.get<InterviewResult>(`/api/interview/${id}`).catch(() => null);
-            if (data) setResult(data);
-            setScoring(false);
-            es.close();
-          }
-        } catch { es.close(); }
-      };
-      es.onerror = () => { es.close(); };
-    } catch {}
-  };
-
-  const pollForScores = async () => {
-    for (let i = 0; i < 45; i++) {
-      await new Promise(r => setTimeout(r, 2000));
+    const load = async () => {
       try {
         const data = await api.get<InterviewResult>(`/api/interview/${id}`);
-        setResult(data);
-        if (data.total_score !== null || data.dimension_scores) {
-          setScoring(false); return;
+        if (cancelled || cancelledRef.current) return;
+
+        // 未完成 → 跳转续答
+        if (data.status !== 'completed') {
+          router.replace(`/interview/session?id=${id}`);
+          return;
         }
-      } catch { return; }
+
+        setResult(data);
+        setLoading(false);
+
+        // 判断是否需要轮询等待评分
+        const needsPolling =
+          data.scoring_status &&
+          data.scoring_status !== 'done' &&
+          data.scoring_status !== 'failed';
+
+        if (needsPolling) {
+          setPolling(true);
+          startPolling();
+        }
+      } catch (err: any) {
+        if (!cancelled && !cancelledRef.current) {
+          setError(err.message || '加载失败');
+          setLoading(false);
+        }
+      }
+    };
+
+    load();
+
+    return () => {
+      cancelled = true;
+      cancelledRef.current = true;
+      clearPollTimer();
+    };
+  }, [id]);
+
+  // 轮询逻辑
+  const startPolling = useCallback(() => {
+    let count = 0;
+
+    const poll = async () => {
+      if (cancelledRef.current) return;
+      if (count >= MAX_POLLS) {
+        // 超时：停止轮询，显示当前已有的数据
+        setPolling(false);
+        return;
+      }
+
+      count++;
+      setPollCount(count);
+
+      try {
+        const data = await api.get<InterviewResult>(`/api/interview/${id}`);
+        if (cancelledRef.current) return;
+
+        setResult(data);
+
+        // 评分完成或失败 → 停止轮询
+        if (!data.scoring_status || data.scoring_status === 'done' || data.scoring_status === 'failed') {
+          setPolling(false);
+          return;
+        }
+
+        // 继续轮询
+        pollTimerRef.current = setTimeout(poll, POLL_INTERVAL);
+      } catch {
+        // 网络错误不中断轮询
+        pollTimerRef.current = setTimeout(poll, POLL_INTERVAL);
+      }
+    };
+
+    pollTimerRef.current = setTimeout(poll, POLL_INTERVAL);
+  }, [id]);
+
+  // 手动重试生成总评
+  const handleRetryOverview = async () => {
+    setRetrying(true);
+    try {
+      await api.post(`/api/interview/${id}/rescore`);
+      // 重新开始轮询
+      setPolling(true);
+      setPollCount(0);
+      startPolling();
+    } catch (err: any) {
+      alert('重试失败：' + (err.message || '未知错误'));
+    } finally {
+      setRetrying(false);
     }
-    setScoring(false);
   };
 
-  // Skeleton loader
+  // ===== Loading Skeleton =====
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50/50 dark:bg-gray-950">
         <div className="max-w-4xl mx-auto px-4 py-12 space-y-6">
-          {/* Header skeleton */}
           <div className="flex items-center justify-between animate-pulse">
             <div className="space-y-2">
               <div className="h-8 w-40 bg-gray-200 dark:bg-gray-800 rounded-lg" />
@@ -126,19 +197,16 @@ export default function ResultPage() {
             </div>
             <div className="h-4 w-16 bg-gray-200 dark:bg-gray-800 rounded-lg" />
           </div>
-          {/* Score skeleton */}
           <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm p-8 animate-pulse">
             <div className="flex flex-col items-center gap-3">
               <div className="h-4 w-20 bg-gray-200 dark:bg-gray-800 rounded-lg" />
               <div className="w-28 h-28 rounded-full bg-gray-200 dark:bg-gray-800" />
             </div>
           </div>
-          {/* Radar skeleton */}
           <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm p-6 animate-pulse">
             <div className="h-5 w-32 bg-gray-200 dark:bg-gray-800 rounded-lg mb-4" />
             <div className="h-64 bg-gray-100 dark:bg-gray-800 rounded-xl" />
           </div>
-          {/* Cards skeleton */}
           {[1, 2, 3].map((i) => (
             <div key={i} className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm p-6 animate-pulse">
               <div className="h-5 w-40 bg-gray-200 dark:bg-gray-800 rounded-lg mb-3" />
@@ -153,6 +221,7 @@ export default function ResultPage() {
     );
   }
 
+  // ===== Error State =====
   if (error || !result) {
     return (
       <div className="min-h-screen bg-gray-50/50 dark:bg-gray-950 flex items-center justify-center">
@@ -174,25 +243,29 @@ export default function ResultPage() {
   const avgScore = scoredQs.length > 0 ? Math.round(scoredQs.reduce((s, q) => s + (q.ai_score || 0), 0) / scoredQs.length) : null;
   const displayScore = result.total_score ?? avgScore;
 
+  // 评分是否还在进行中
+  const isScoring = polling || (result.scoring_status != null && result.scoring_status !== 'done' && result.scoring_status !== 'failed');
+  const isFailed = result.scoring_status === 'failed';
+  const showOverviewLoading = isScoring && !result.ai_overview;
+  const showSuggestionsLoading = isScoring && !result.resume_suggestions;
+
   return (
     <div className="min-h-screen bg-gray-50/50 dark:bg-gray-950">
       <div className="max-w-4xl mx-auto px-4 py-10 sm:py-14 space-y-8">
 
         {/* ===== Header ===== */}
         <div className="flex items-start justify-between">
-          <div className="flex items-center gap-4">
-            <div className="flex flex-col">
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">面试报告</h1>
-              <div className="flex items-center gap-3 mt-1.5">
-                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-medium border ${DIFFICULTY_CLASS[result.difficulty] || ''}`}>
-                  {DIFFICULTY_LABEL[result.difficulty] || result.difficulty}
+          <div className="flex flex-col">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">面试报告</h1>
+            <div className="flex items-center gap-3 mt-1.5">
+              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-medium border ${DIFFICULTY_CLASS[result.difficulty] || ''}`}>
+                {DIFFICULTY_LABEL[result.difficulty] || result.difficulty}
+              </span>
+              {result.created_at && (
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  {new Date(result.created_at).toLocaleDateString('zh-CN')}
                 </span>
-                {result.created_at && (
-                  <span className="text-xs text-gray-400 dark:text-gray-500">
-                    {new Date(result.created_at).toLocaleDateString('zh-CN')}
-                  </span>
-                )}
-              </div>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -220,16 +293,68 @@ export default function ResultPage() {
           </div>
         </div>
 
-        {/* ===== Scoring Indicator (generating state) ===== */}
-        {scoring && (
-          <div className="flex items-center gap-3 bg-brand-50/80 dark:bg-brand-950/30 border border-brand-100 dark:border-brand-900 rounded-2xl px-5 py-3.5 animate-pulse">
-            <div className="relative">
-              <Loader2 className="w-5 h-5 text-brand-500 dark:text-brand-400 animate-spin" />
-              <div className="absolute inset-0 rounded-full bg-brand-400/20 animate-ping" />
+        {/* ===== Scoring Progress Indicator ===== */}
+        {isScoring && (
+          <div className="bg-brand-50/80 dark:bg-brand-950/30 border border-brand-100 dark:border-brand-900 rounded-2xl px-5 py-4">
+            <div className="flex items-center gap-3">
+              <Loader2 className="w-5 h-5 text-brand-500 dark:text-brand-400 animate-spin shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-brand-700 dark:text-brand-300">
+                  {scoringPhaseLabel(result.scoring_status)}
+                </p>
+                <p className="text-xs text-brand-500/70 dark:text-brand-400/70 mt-0.5">
+                  {result.scoring_status === 'scoring_questions' && result.scoring_progress
+                    ? `已完成 ${result.scoring_progress} 题`
+                    : '请稍候，结果将自动更新'}
+                </p>
+              </div>
+              {pollCount > 0 && (
+                <span className="text-xs text-brand-400 dark:text-brand-500 shrink-0">
+                  {Math.round(pollCount * POLL_INTERVAL / 1000)}s
+                </span>
+              )}
             </div>
-            <div>
-              <p className="text-sm font-medium text-brand-600 dark:text-brand-400">AI 正在生成总评和简历建议</p>
-              <p className="text-xs text-brand-500 dark:text-brand-500 mt-0.5">稍后自动更新，无需刷新页面</p>
+            {/* 进度条 */}
+            <div className="mt-3 h-1.5 bg-brand-100 dark:bg-brand-900/50 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-brand-500 rounded-full transition-all duration-700 ease-out"
+                style={{
+                  width: result.scoring_status === 'scoring_questions'
+                    ? '40%'
+                    : result.scoring_status === 'aggregating'
+                    ? '60%'
+                    : result.scoring_status === 'generating_overview'
+                    ? '80%'
+                    : '20%'
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* ===== Failed State ===== */}
+        {isFailed && (
+          <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-2xl px-5 py-4">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-red-700 dark:text-red-300">评分过程出错</p>
+                <p className="text-xs text-red-500/80 dark:text-red-400/80 mt-0.5">
+                  {result.scoring_error || '未知错误，请重试'}
+                </p>
+              </div>
+              <button
+                onClick={handleRetryOverview}
+                disabled={retrying}
+                className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/40 rounded-lg hover:bg-red-200 dark:hover:bg-red-900/60 transition-colors disabled:opacity-50"
+              >
+                {retrying ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <RefreshCw className="w-3 h-3" />
+                )}
+                重新生成
+              </button>
             </div>
           </div>
         )}
@@ -250,7 +375,7 @@ export default function ResultPage() {
               </svg>
               <div className="absolute inset-0 flex flex-col items-center justify-center">
                 <span className="text-4xl font-bold text-gray-900 dark:text-gray-100">
-                  {displayScore ?? '-'}
+                  {displayScore ?? '--'}
                 </span>
                 <span className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">/ 100</span>
               </div>
@@ -262,23 +387,19 @@ export default function ResultPage() {
                 <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">总体评分</p>
               </div>
               <p className="text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
-                {result.total_score
+                {isScoring
+                  ? 'AI 正在分析你的面试表现，请稍候...'
+                  : result.total_score != null
                   ? 'AI 已根据各维度表现完成综合评分'
-                  : avgScore && !result.total_score
-                  ? '基于已答题目的平均分估算，最终结果生成中'
-                  : '评分生成中'}
+                  : avgScore != null
+                  ? '基于已答题目的平均分估算'
+                  : '暂无评分数据'}
               </p>
-              {scoring && (
-                <div className="flex items-center gap-2 mt-3 justify-center sm:justify-start">
-                  <Sparkles className="w-4 h-4 text-amber-500" />
-                  <span className="text-xs text-amber-600 dark:text-amber-400 animate-pulse">生成中</span>
-                </div>
-              )}
             </div>
           </div>
         </div>
 
-        {/* ===== Radar Chart ===== */}
+        {/* ===== Radar / Dimension Scores ===== */}
         {(result.dimension_scores && Object.keys(result.dimension_scores).length > 0) ? (
           <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 p-6 sm:p-8">
             <div className="flex items-center gap-2.5 mb-6">
@@ -332,11 +453,9 @@ export default function ResultPage() {
               </div>
               <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">综合评价</h2>
             </div>
-            <div className="pl-0 border-l-0">
-              <p className="text-gray-700 dark:text-gray-300 leading-relaxed text-sm">{result.ai_overview}</p>
-            </div>
+            <p className="text-gray-700 dark:text-gray-300 leading-relaxed text-sm whitespace-pre-line">{result.ai_overview}</p>
           </div>
-        ) : scoring ? (
+        ) : showOverviewLoading ? (
           <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 p-6 sm:p-8">
             <div className="flex items-center gap-2.5 mb-4">
               <div className="w-8 h-8 rounded-lg bg-purple-100 dark:bg-purple-950/50 flex items-center justify-center">
@@ -373,11 +492,9 @@ export default function ResultPage() {
               </div>
               <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">简历优化建议</h2>
             </div>
-            <div className="pl-0 border-l-0">
-              <p className="text-gray-700 dark:text-gray-300 leading-relaxed text-sm">{result.resume_suggestions}</p>
-            </div>
+            <p className="text-gray-700 dark:text-gray-300 leading-relaxed text-sm whitespace-pre-line">{result.resume_suggestions}</p>
           </div>
-        ) : scoring ? (
+        ) : showSuggestionsLoading ? (
           <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 p-6 sm:p-8">
             <div className="flex items-center gap-2.5 mb-4">
               <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-950/50 flex items-center justify-center">

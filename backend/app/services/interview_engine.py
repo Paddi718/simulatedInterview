@@ -48,13 +48,17 @@ class InterviewEngine:
         await db.commit()
 
         # 用 selectinload 预加载 questions，避免后续懒加载触发 MissingGreenlet
+        # 使用 scalar_one_or_none 并手动处理 None，避免 "No row was found" 错误
         from sqlalchemy.orm import selectinload
         result = await db.execute(
             select(Interview)
             .where(Interview.id == interview.id)
             .options(selectinload(Interview.questions))
         )
-        return result.scalar_one()
+        loaded = result.scalar_one_or_none()
+        if loaded is None:
+            raise RuntimeError("面试创建后无法重新加载，请重试")
+        return loaded
 
     @staticmethod
     async def start_interview(db: AsyncSession, interview_id: uuid.UUID) -> Interview:
