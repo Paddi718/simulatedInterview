@@ -299,7 +299,7 @@ export default function HistoryPage() {
                     {/* Right: score or status + hover actions in normal flow */}
                     <div className="flex items-center gap-1 shrink-0">
                       {/* Action buttons — slide in on hover */}
-                      <div className="flex items-center gap-1 overflow-hidden transition-all duration-200 max-w-0 opacity-0 group-hover:max-w-20 group-hover:opacity-100 group-hover:mr-1">
+                      <div className="flex items-center gap-1 overflow-hidden transition-all duration-200 max-w-0 opacity-0 pointer-events-none group-hover:max-w-20 group-hover:opacity-100 group-hover:pointer-events-auto group-hover:mr-1">
                         <button
                           onClick={(e) => handleRetry(e, r.id)}
                           disabled={retrying === r.id}

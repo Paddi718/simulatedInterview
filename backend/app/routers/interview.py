@@ -78,6 +78,8 @@ async def delete_interview(
         raise HTTPException(status_code=404, detail="Interview not found")
     await db.delete(interview)
     await db.commit()
+    # 清理 SSE 事件
+    _sse_events.pop(str(interview_id), None)
     return {"code": 0, "message": "ok"}
 
 
