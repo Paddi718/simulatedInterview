@@ -459,14 +459,11 @@ async def stream_interview_result(
         try:
             # 等待 scoring 完成（最多 60s）
             await asyncio.wait_for(event.wait(), timeout=60.0)
-            # 推送完成事件
+            # 推送完成事件（无论 overview 是否已生成，始终返回最新数据）
             async with async_session_factory() as s:
                 r = await s.execute(select(Interview).where(Interview.id == interview_id))
                 i = r.scalar_one_or_none()
-                if i and i.ai_overview:
-                    yield f"data: {json.dumps({'type': 'overview_ready', 'total_score': i.total_score, 'dimension_scores': i.dimension_scores, 'ai_overview': i.ai_overview, 'resume_suggestions': i.resume_suggestions})}\n\n"
-                    return
-            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                yield f"data: {json.dumps({'type': 'overview_ready', 'total_score': i.total_score if i else None, 'dimension_scores': i.dimension_scores if i else None, 'ai_overview': i.ai_overview if i else None, 'resume_suggestions': i.resume_suggestions if i else None})}\n\n"
         except asyncio.TimeoutError:
             yield f"data: {json.dumps({'type': 'timeout'})}\n\n"
         finally:
