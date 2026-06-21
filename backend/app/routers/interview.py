@@ -229,12 +229,20 @@ async def complete_interview(
     if not result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail="Interview not found")
     interview = await InterviewEngine.complete_interview(db, interview_id)
-    # 触发评分
-    try:
-        from app.services.scoring_service import run_full_scoring
-        interview = await run_full_scoring(db, interview_id)
-    except Exception:
-        pass
+
+    # 后台异步评分，不阻塞响应
+    async def _background_scoring():
+        from app.database import async_session_factory
+        async with async_session_factory() as bg_db:
+            try:
+                from app.services.scoring_service import run_full_scoring
+                await run_full_scoring(bg_db, interview_id)
+            except Exception:
+                pass
+
+    import asyncio
+    asyncio.create_task(_background_scoring())
+
     return await _interview_to_response(interview, db)
 
 

@@ -49,20 +49,26 @@ export default function ResultPage() {
   }, [id]);
 
   const loadResult = async () => {
-    try {
-      const data = await api.get<InterviewResult>(`/api/interview/${id}`);
-      setResult(data);
-    } catch (err: any) {
-      setError(err.message || '加载失败');
-    } finally {
-      setLoading(false);
+    // 轮询直到评分完成（total_score 不为 null）
+    for (let i = 0; i < 60; i++) {
+      try {
+        const data = await api.get<InterviewResult>(`/api/interview/${id}`);
+        if (data.total_score !== null) {
+          setResult(data); setLoading(false); return;
+        }
+        setResult(data); // 显示部分数据
+      } catch (err: any) { setError(err.message || '加载失败'); setLoading(false); return; }
+      await new Promise(r => setTimeout(r, 2000)); // 每 2 秒轮询
     }
+    setLoading(false);
   };
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900" />
+      <div className="flex flex-col items-center justify-center min-h-screen gap-4">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600" />
+        <p className="text-gray-500 text-sm">AI 正在生成面试报告…</p>
+        <p className="text-gray-400 text-xs">评分和总评在后台处理中，请稍候</p>
       </div>
     );
   }
