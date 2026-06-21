@@ -128,6 +128,13 @@ function SessionContent() {
   },[interviewId]);
 
   const speak=useCallback((text:string)=>{
+    // 降级：先用浏览器内置 TTS
+    if(typeof window!=='undefined'&&(window as any).speechSynthesis){
+      const u=new SpeechSynthesisUtterance(text);
+      u.lang='zh-CN';u.rate=1.0;
+      try{(window as any).speechSynthesis.speak(u);return;}catch{}
+    }
+    // 再尝试后端 edge-tts（如果 WS 已连接）
     const doSend=()=>{
       const ws=wsRef.current;
       if(ws&&ws.readyState===WebSocket.OPEN){
@@ -137,10 +144,8 @@ function SessionContent() {
       return false;
     };
     if(!doSend()){
-      connectWs();  // 强制重连
-      setTimeout(doSend,800);
-      setTimeout(doSend,2000);
-      setTimeout(doSend,4000);
+      connectWs();
+      setTimeout(doSend,1500);
     }
   },[connectWs]);
 
