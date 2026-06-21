@@ -1,20 +1,35 @@
+"""
+WebSocket 处理器 — 面试实时语音交互
+架构参考: F:/AI_study/PythonProject/20260530_AI_CRM
+
+消息协议:
+  客户端 → 服务器 (binary): PCM 音频数据 (Int16, 16kHz, mono)
+  客户端 → 服务器 (text):
+    {"type": "audio_start"}          — 开始录音（重置缓冲区）
+    {"type": "audio_stop"}           — 结束录音（最终 ASR）
+    {"type": "tts_request", ...}     — TTS 语音合成请求
+    {"type": "submit_answer", ...}   — 提交回答
+    {"type": "ping"}                 — 心跳
+  服务器 → 客户端 (text):
+    {"type": "asr_result", "text": "...", "final": true/false}
+    {"type": "pong"}
+    {"type": "audio_started"}
+"""
 import json
 import uuid
-import tempfile
-import os
-import subprocess
+import time
 import asyncio
+import struct
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import async_session_factory
 from app.services.tts_service import synthesize_speech
 from app.services.interview_engine import InterviewEngine
+from app.services.vad_service import get_vad
 
 router = APIRouter()
 
 
 async def _verify_token(websocket: WebSocket) -> bool:
-    """从 WebSocket 查询参数验证 token"""
     token = websocket.query_params.get("token")
     if not token:
         return False
@@ -29,59 +44,17 @@ async def _verify_token(websocket: WebSocket) -> bool:
         return False
 
 
-async def _convert_webm_to_wav(webm_bytes: bytes) -> bytes:
-    """使用 ffmpeg 将 webm/opus 音频转为 16kHz 16bit mono WAV"""
-    with tempfile.NamedTemporaryFile(suffix='.webm', delete=False) as webm_f:
-        webm_f.write(webm_bytes)
-        webm_path = webm_f.name
-
-    wav_path = webm_path + '.wav'
-    try:
-        # Convert to 16kHz 16bit mono WAV via ffmpeg
-        proc = await asyncio.create_subprocess_exec(
-            'ffmpeg', '-y', '-i', webm_path,
-            '-ar', '16000', '-ac', '1', '-f', 'wav',
-            wav_path,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        await proc.communicate()
-
-        if os.path.exists(wav_path):
-            with open(wav_path, 'rb') as f:
-                wav_bytes = f.read()
-            return wav_bytes
-        return b''
-    finally:
-        # Clean up temp files
-        for p in (webm_path, wav_path):
-            try:
-                os.unlink(p)
-            except OSError:
-                pass
-
-
-async def _run_asr_on_webm(webm_bytes: bytes) -> str:
-    """运行 FunASR 对 webm 音频进行转写"""
-    if len(webm_bytes) < 1000:  # Skip tiny chunks
-        return ''
-
-    wav_bytes = await _convert_webm_to_wav(webm_bytes)
-    if not wav_bytes:
-        return ''
-
-    # Parse WAV header to extract PCM data (skip 44-byte header)
-    if len(wav_bytes) > 44 and wav_bytes[:4] == b'RIFF':
-        pcm_bytes = wav_bytes[44:]
-    else:
-        pcm_bytes = wav_bytes
-
-    if len(pcm_bytes) < 1600:  # Less than 100ms — skip
-        return ''
+async def _run_funasr(pcm_bytes: bytes) -> str:
+    """对 PCM 音频 (16kHz, 16bit, mono) 运行 FunASR 识别"""
+    if len(pcm_bytes) < 3200:  # 至少 100ms 音频
+        return ""
 
     from app.services.asr_service import transcribe_pcm
-    text = await transcribe_pcm(pcm_bytes)
-    return text
+    try:
+        text = await transcribe_pcm(pcm_bytes)
+        return text
+    except Exception:
+        return ""
 
 
 @router.websocket("/api/ws/interview/{interview_id}")
@@ -93,22 +66,61 @@ async def interview_websocket(websocket: WebSocket, interview_id: str):
         await websocket.close()
         return
 
-    # Audio accumulation buffer
-    audio_chunks: list[bytes] = []
-    asr_task: asyncio.Task | None = None
-    last_asr_text = ''
+    # 初始化 VAD
+    vad = get_vad()
+    vad_state = vad.reset_state()
+
+    # 语音段缓冲区（累积有语音的 PCM）
+    speech_buffer = bytearray()
+    # 用于最终 ASR 的完整音频
+    full_audio = bytearray()
+    # 是否正在录音
+    is_recording = False
 
     try:
         while True:
             message = await websocket.receive()
 
             if message.get("type") == "websocket.receive":
-                # --- Binary: audio chunk ---
+                # === 二进制消息：PCM 音频数据 ===
                 if "bytes" in message:
-                    chunk = message["bytes"]
-                    audio_chunks.append(chunk)
+                    pcm_chunk = message["bytes"]
 
-                # --- Text/JSON messages ---
+                    if not is_recording:
+                        continue
+
+                    # 累积完整音频（用于最终 ASR）
+                    full_audio.extend(pcm_chunk)
+
+                    # VAD 处理
+                    vad_state = vad.process_pcm(vad_state, pcm_chunk)
+
+                    # 检测到语音停止（一句话说完）
+                    if vad_state.get("client_voice_stop"):
+                        # 提取当前语音段（从 speech_buffer 中）
+                        segment_pcm = bytes(speech_buffer)
+                        speech_buffer.clear()
+                        vad_state["client_voice_stop"] = False
+                        vad_state["client_have_voice"] = False
+
+                        # 异步运行 FunASR
+                        if len(segment_pcm) > 3200:
+                            text = await _run_funasr(segment_pcm)
+                            if text:
+                                try:
+                                    await websocket.send_json({
+                                        "type": "asr_result",
+                                        "text": text,
+                                        "final": False,
+                                    })
+                                except Exception:
+                                    pass
+
+                    # 如果在说话，累积语音段
+                    if vad_state.get("client_have_voice"):
+                        speech_buffer.extend(pcm_chunk)
+
+                # === 文本消息 ===
                 elif "text" in message:
                     data = json.loads(message["text"])
                     msg_type = data.get("type")
@@ -116,59 +128,73 @@ async def interview_websocket(websocket: WebSocket, interview_id: str):
                     if msg_type == "ping":
                         await websocket.send_json({"type": "pong"})
 
-                    elif msg_type == "tts_request":
-                        text = data.get("text", "")
-                        voice = data.get("voice", "zh-CN-XiaoxiaoNeural")
-                        audio_data = await synthesize_speech(text, voice)
-                        await websocket.send_bytes(audio_data)
-
                     elif msg_type == "audio_start":
-                        # Start a new recording session — clear previous buffers
-                        audio_chunks.clear()
-                        last_asr_text = ''
-                        if asr_task and not asr_task.done():
-                            asr_task.cancel()
+                        # 开始录音 — 重置所有缓冲区
+                        vad_state = vad.reset_state()
+                        speech_buffer.clear()
+                        full_audio.clear()
+                        is_recording = True
                         await websocket.send_json({"type": "audio_started"})
 
                     elif msg_type == "audio_stop":
-                        # Recording stopped — run ASR on accumulated audio
-                        if audio_chunks:
-                            combined = b''.join(audio_chunks)
-                            audio_chunks.clear()
+                        # 停止录音 — 对剩余语音 + 全部音频做最终 ASR
+                        is_recording = False
 
-                            # Run ASR in background and send result
-                            async def do_asr():
+                        # 1. 处理 speech_buffer 中剩余的语音
+                        remaining = bytes(speech_buffer)
+                        speech_buffer.clear()
+                        if len(remaining) > 3200:
+                            text = await _run_funasr(remaining)
+                            if text:
                                 try:
-                                    text = await _run_asr_on_webm(combined)
-                                    if text:
-                                        try:
-                                            await websocket.send_json({
-                                                "type": "asr_result",
-                                                "text": text,
-                                                "final": True,
-                                            })
-                                        except Exception:
-                                            pass
+                                    await websocket.send_json({
+                                        "type": "asr_result",
+                                        "text": text,
+                                        "final": False,
+                                    })
                                 except Exception:
                                     pass
 
-                            # We need to run in background since send_json in websocket.receive
-                            # context might cause issues. Use asyncio.create_task here.
-                            # Actually, we're in the receive loop so we can't easily send
-                            # concurrently. Let's do it synchronously.
+                        # 2. 对完整音频做最终 ASR（用于提交）
+                        full = bytes(full_audio)
+                        if len(full) > 3200:
+                            final_text = await _run_funasr(full)
+                            if final_text:
+                                try:
+                                    await websocket.send_json({
+                                        "type": "asr_result",
+                                        "text": final_text,
+                                        "final": True,
+                                    })
+                                except Exception:
+                                    pass
+                        elif not remaining:
+                            # 没有检测到任何语音
                             try:
-                                text = await _run_asr_on_webm(combined)
                                 await websocket.send_json({
                                     "type": "asr_result",
-                                    "text": text,
+                                    "text": "",
                                     "final": True,
                                 })
                             except Exception:
                                 pass
 
+                    elif msg_type == "tts_request":
+                        # TTS 语音合成：将文本转为语音返回
+                        text = data.get("text", "")
+                        voice = data.get("voice", "zh-CN-XiaoxiaoNeural")
+                        try:
+                            audio_data = await synthesize_speech(text, voice)
+                            await websocket.send_bytes(audio_data)
+                        except Exception:
+                            await websocket.send_json({
+                                "type": "tts_error",
+                                "message": "TTS synthesis failed",
+                            })
+
                     elif msg_type == "submit_answer":
                         async with async_session_factory() as db:
-                            question = await InterviewEngine.submit_answer(
+                            await InterviewEngine.submit_answer(
                                 db,
                                 uuid.UUID(interview_id),
                                 data["order_index"],
@@ -206,3 +232,5 @@ async def interview_websocket(websocket: WebSocket, interview_id: str):
             await websocket.send_json({"type": "error", "message": str(e)})
         except Exception:
             pass
+    finally:
+        is_recording = False
