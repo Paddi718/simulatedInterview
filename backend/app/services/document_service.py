@@ -117,75 +117,222 @@ def _build_pdf(interview: Interview, questions: list[InterviewQuestion]) -> byte
 
 
 def _build_pdf_fpdf2(interview: Interview, questions: list[InterviewQuestion], font_path: str) -> bytes:
-    """使用 fpdf2 生成 PDF（支持中文）"""
+    """使用 fpdf2 生成专业排版的 PDF 报告"""
     from fpdf import FPDF
 
-    pdf = FPDF()
+    pdf = FPDF(orientation='P', unit='mm', format='A4')
+    pdf.set_auto_page_break(auto=True, margin=18)
+    pdf.set_left_margin(20)
+    pdf.set_right_margin(20)
     pdf.add_page()
-    pdf.add_font('cjk', '', font_path, uni=True)
-    pdf.add_font('cjk', 'B', font_path, uni=True)
+
+    # Register fonts
+    pdf.add_font('cjk', '', font_path)
+    pdf.add_font('cjk', 'B', font_path)
+
+    # Color palette
+    PRIMARY = (25, 118, 210)     # Blue
+    DARK = (33, 33, 33)
+    GRAY = (117, 117, 117)
+    LIGHT_BG = (245, 247, 250)
+    ACCENT_BG = (232, 245, 253)
+    GREEN_BG = (232, 253, 245)
+    ORANGE_BG = (255, 248, 225)
+    WHITE = (255, 255, 255)
+    BORDER = (224, 224, 224)
 
     scores = interview.dimension_scores or {}
+    page_w = pdf.w - pdf.l_margin - pdf.r_margin  # usable width
 
-    def w(text: str, bold: bool = False, size: int = 10):
-        style = 'B' if bold else ''
-        pdf.set_font('cjk', style, size)
-
-    def title(text: str):
-        pdf.set_font('cjk', 'B', 18)
-        pdf.cell(0, 14, text, new_x="LMARGIN", new_y="NEXT", align='C')
+    # ---- Helper functions ----
+    def section_title(text: str):
         pdf.ln(6)
-
-    def heading(text: str):
-        pdf.ln(4)
+        pdf.set_fill_color(*PRIMARY)
+        pdf.set_text_color(*WHITE)
         pdf.set_font('cjk', 'B', 13)
-        pdf.cell(0, 10, text, new_x="LMARGIN", new_y="NEXT")
-        pdf.ln(2)
+        pdf.cell(page_w, 9, f'  {text}', fill=True, new_x="LMARGIN", new_y="NEXT")
+        pdf.set_text_color(*DARK)
+        pdf.ln(5)
 
-    def body(text: str, size: int = 10):
+    def key_value(key: str, value: str, w_key: float = 42):
+        pdf.set_font('cjk', '', 10)
+        pdf.set_text_color(*GRAY)
+        pdf.cell(w_key, 7, key)
+        pdf.set_text_color(*DARK)
+        pdf.set_font('cjk', 'B', 10)
+        pdf.cell(page_w - w_key, 7, str(value), new_x="LMARGIN", new_y="NEXT")
+
+    def body_text(text: str, size: float = 9.5):
+        if not text:
+            return
         pdf.set_font('cjk', '', size)
-        pdf.multi_cell(0, 6, text)
+        pdf.set_text_color(*DARK)
+        pdf.multi_cell(page_w, 5.5, text, align='L')
+        pdf.ln(1.5)
+
+    def label_text(label: str, size: float = 9):
+        pdf.set_font('cjk', 'B', size)
+        pdf.set_text_color(*DARK)
+        pdf.cell(page_w, 6, label, new_x="LMARGIN", new_y="NEXT")
         pdf.ln(1)
 
-    # 标题
-    title('模拟面试报告')
-
-    # 概览
-    heading('面试概览')
-    body(f"总体评分：{interview.total_score or '-'} 分 / 100")
-    body(f"难度级别：{interview.difficulty}")
-    body(f"内容完整性：{scores.get('content_completeness', '-')} 分  |  专业度：{scores.get('professionalism', '-')} 分")
-    body(f"表达能力：{scores.get('expression', '-')} 分  |  STAR法则：{scores.get('star_method', '-')} 分")
-
-    # 综合评价
-    if interview.ai_overview:
-        heading('综合评价')
-        body(interview.ai_overview)
-
-    # 逐题详情
-    heading('逐题详情')
-    for q in sorted(questions, key=lambda x: x.order_index):
-        sd = q.score_detail or {}
-        pdf.set_font('cjk', 'B', 11)
-        pdf.cell(0, 8, f"第{q.order_index}题：{q.question_text[:60]}", new_x="LMARGIN", new_y="NEXT")
-        body(f"你的回答：{q.user_answer_transcript or '（未作答）'}", 9)
-        if q.ai_score is not None:
-            body(f"评分：{q.ai_score} 分", 9)
-        if q.ai_evaluation:
-            body(f"评语：{q.ai_evaluation}", 9)
-        body(f"参考答案：{q.reference_answer or '暂无'}", 9)
-        if q.improvement_suggestion:
-            body(f"改进建议：{q.improvement_suggestion}", 9)
+    def divider():
+        pdf.ln(2)
+        pdf.set_draw_color(*BORDER)
+        pdf.line(pdf.l_margin, pdf.get_y(), pdf.w - pdf.r_margin, pdf.get_y())
         pdf.ln(3)
 
-    # 简历建议
-    if interview.resume_suggestions:
-        heading('简历优化建议')
-        body(interview.resume_suggestions)
+    # ====== Cover / Title ======
+    pdf.ln(8)
+    pdf.set_font('cjk', 'B', 26)
+    pdf.set_text_color(*PRIMARY)
+    pdf.cell(page_w, 14, '模拟面试报告', align='C', new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(3)
+    pdf.set_font('cjk', '', 11)
+    pdf.set_text_color(*GRAY)
+    pdf.cell(page_w, 7, f"生成日期：{datetime.now().strftime('%Y年%m月%d日')}", align='C', new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(10)
 
-    pdf.ln(5)
+    # ====== Overview Card ======
+    pdf.set_fill_color(*LIGHT_BG)
+    pdf.set_draw_color(*BORDER)
+    y0 = pdf.get_y()
+    pdf.rect(pdf.l_margin, y0, page_w, 38, style='DF')
+    pdf.set_xy(pdf.l_margin + 4, y0 + 4)
+
+    # Score circle (fake — just big text)
+    pdf.set_font('cjk', 'B', 42)
+    pdf.set_text_color(*PRIMARY)
+    pdf.cell(36, 18, str(interview.total_score or '-'), align='C')
+    pdf.set_font('cjk', '', 9)
+    pdf.set_text_color(*GRAY)
+    pdf.cell(0, 18, '  分 / 100', new_x="LMARGIN", new_y="NEXT")
+
+    pdf.set_x(pdf.l_margin + 4)
+    pdf.set_font('cjk', '', 9.5)
+    pdf.set_text_color(*DARK)
+    diff_label = {'easy': '初级', 'mid': '中级', 'hard': '高级'}.get(interview.difficulty, interview.difficulty)
+    pdf.cell(page_w - 8, 6, f"难度级别：{diff_label}　|　面试时间：{interview.started_at.strftime('%Y-%m-%d %H:%M') if interview.started_at else 'N/A'}", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_y(y0 + 38 + 6)
+
+    # ====== Dimension Scores Table ======
+    section_title('各维度评分')
+    dims = [
+        ('内容完整性', scores.get('content_completeness', '-')),
+        ('专业度', scores.get('professionalism', '-')),
+        ('表达能力', scores.get('expression', '-')),
+        ('STAR 法则', scores.get('star_method', '-')),
+    ]
+    col_w = page_w / 4
+    # Header row
+    pdf.set_fill_color(*PRIMARY)
+    pdf.set_text_color(*WHITE)
+    pdf.set_font('cjk', 'B', 10)
+    for label, _ in dims:
+        pdf.cell(col_w, 10, label, border=0, fill=True, align='C')
+    pdf.ln()
+    # Value row
+    pdf.set_fill_color(*LIGHT_BG)
+    pdf.set_text_color(*DARK)
+    pdf.set_font('cjk', 'B', 16)
+    for _, val in dims:
+        pdf.cell(col_w, 14, str(val), border=0, fill=True, align='C')
+    pdf.ln(8)
+
+    # ====== AI Overview ======
+    if interview.ai_overview:
+        section_title('综合评价')
+        body_text(interview.ai_overview)
+
+    # ====== Question Details ======
+    section_title('逐题详情')
+    sorted_qs = sorted(questions, key=lambda x: x.order_index)
+    for idx, q in enumerate(sorted_qs):
+        sd = q.score_detail or {}
+        # Check if we need a page break (estimate: ~60mm per question)
+        if pdf.get_y() > pdf.h - 75:
+            pdf.add_page()
+
+        # Question header bar
+        q_num = f"第 {q.order_index} 题"
+        type_label = QUESTION_TYPE_LABELS.get(q.question_type, q.question_type)
+        pdf.set_fill_color(*PRIMARY)
+        pdf.set_text_color(*WHITE)
+        pdf.set_font('cjk', 'B', 10)
+        pdf.cell(page_w, 8, f'  {q_num}  ·  {type_label}', fill=True, new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(3)
+
+        # Question text
+        pdf.set_font('cjk', 'B', 10)
+        pdf.set_text_color(*DARK)
+        pdf.multi_cell(page_w, 5.8, q.question_text)
+        pdf.ln(1)
+
+        # Score (if available)
+        if q.ai_score is not None:
+            pdf.set_fill_color(*LIGHT_BG)
+            pdf.set_draw_color(*BORDER)
+            y1 = pdf.get_y()
+            pdf.rect(pdf.l_margin, y1, page_w, 10, style='DF')
+            pdf.set_xy(pdf.l_margin + 3, y1 + 1.5)
+            pdf.set_font('cjk', '', 9)
+            pdf.set_text_color(*DARK)
+            dim_str = '  |  '.join(
+                f"{'内容' if k=='content_completeness' else '专业' if k=='professionalism' else '表达' if k=='expression' else 'STAR'}：{v}"
+                for k, v in sd.items()
+            )
+            pdf.cell(page_w - 6, 7, f"得分：{q.ai_score} 分　　　{dim_str}")
+            pdf.set_y(y1 + 10 + 3)
+
+        # Answer
+        label_text('▎你的回答', 9)
+        body_text(q.user_answer_transcript or '（未作答）', 9)
+
+        # Evaluation
+        if q.ai_evaluation:
+            label_text('▎AI 评语', 9)
+            pdf.set_fill_color(*ACCENT_BG)
+            y2 = pdf.get_y()
+            pdf.set_font('cjk', '', 9)
+            pdf.set_text_color(*DARK)
+            pdf.multi_cell(page_w, 5.5, q.ai_evaluation)
+            pdf.set_y(pdf.get_y() + 1)
+
+        # Reference answer
+        label_text('▎参考答案', 9)
+        pdf.set_fill_color(*GREEN_BG)
+        y3 = pdf.get_y()
+        pdf.set_font('cjk', '', 9)
+        pdf.set_text_color(*DARK)
+        pdf.multi_cell(page_w, 5.5, q.reference_answer or '暂无')
+        pdf.set_y(pdf.get_y() + 1)
+
+        # Improvement
+        if q.improvement_suggestion:
+            label_text('▎改进建议', 9)
+            pdf.set_fill_color(*ORANGE_BG)
+            y4 = pdf.get_y()
+            pdf.set_font('cjk', '', 9)
+            pdf.set_text_color(*DARK)
+            pdf.multi_cell(page_w, 5.5, q.improvement_suggestion)
+            pdf.set_y(pdf.get_y() + 1)
+
+        if idx < len(sorted_qs) - 1:
+            divider()
+
+    # ====== Resume Suggestions ======
+    if interview.resume_suggestions:
+        section_title('简历优化建议')
+        body_text(interview.resume_suggestions)
+
+    # ====== Footer ======
+    pdf.ln(8)
+    divider()
     pdf.set_font('cjk', '', 8)
-    pdf.cell(0, 6, '由 AI 模拟面试系统生成', align='R')
+    pdf.set_text_color(*GRAY)
+    pdf.cell(page_w / 2, 5, '由 AI 模拟面试系统生成', align='L')
+    pdf.cell(page_w / 2, 5, f'第 {{nb}} 页', align='R')
+    pdf.set_text_color(*DARK)
 
     return pdf.output()
 
