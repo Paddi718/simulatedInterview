@@ -24,6 +24,7 @@ interface Interview {
   total_score?: number;
   status?: string;
   position?: string;
+  company?: string;
 }
 
 interface User {
@@ -282,6 +283,7 @@ export default function DashboardPage() {
                         {interview.position || (interview.difficulty
                           ? `${interview.difficulty === 'easy' ? '初级' : interview.difficulty === 'hard' ? '高级' : '中级'} 面试`
                           : '模拟面试')}
+                        {interview.company && <span className="text-gray-400 font-normal ml-1.5">@{interview.company}</span>}
                       </p>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                         {formatDate(interview.created_at)}

@@ -56,6 +56,7 @@ async def list_interviews(
             "difficulty": i.difficulty,
             "total_score": i.total_score,
             "position": (jd_map.get(str(i.jd_id)).parsed_data or {}).get("position", "") if i.jd_id and str(i.jd_id) in jd_map else "",
+            "company": (jd_map.get(str(i.jd_id)).parsed_data or {}).get("company_info", "") if i.jd_id and str(i.jd_id) in jd_map else "",
             "created_at": i.created_at.isoformat(),
         }
         for i in interviews
@@ -68,6 +69,7 @@ async def delete_interview(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    print(f"[Delete] id={interview_id} user_id={current_user.id}")
     result = await db.execute(
         select(Interview).where(
             Interview.id == interview_id, Interview.user_id == current_user.id
@@ -78,6 +80,7 @@ async def delete_interview(
         # 再查一下是否被用户ID过滤掉了
         check = await db.execute(select(Interview).where(Interview.id == interview_id))
         exists = check.scalar_one_or_none()
+        print(f"[Delete] exists_without_user_filter={exists is not None}")
         if exists:
             raise HTTPException(status_code=403, detail="Not your interview")
         raise HTTPException(status_code=404, detail="Interview not found")

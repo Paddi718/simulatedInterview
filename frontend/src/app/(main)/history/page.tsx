@@ -22,6 +22,7 @@ interface InterviewRecord {
   total_score: number | null;
   created_at: string;
   position?: string;
+  company?: string;
 }
 
 type DifficultyFilter = 'all' | 'easy' | 'medium' | 'hard';
@@ -274,6 +275,7 @@ export default function HistoryPage() {
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
                       {r.position || '模拟面试'}
+                      {r.company && <span className="text-gray-400 dark:text-gray-500 font-normal ml-1.5">@{r.company}</span>}
                     </p>
                     <div className="flex items-center gap-2 mt-1.5">
                       <span
