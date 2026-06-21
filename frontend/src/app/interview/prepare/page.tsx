@@ -88,8 +88,8 @@ export default function PreparePage() {
       return;
     }
     setLoading(true);
+    setError('');
     try {
-      // 如果没有选择已有JD，先创建
       let jdId = selectedJd;
       if (!jdId && jdText.trim()) {
         const jd = await api.post<JD>('/api/jd/create', { raw_text: jdText });
@@ -103,8 +103,8 @@ export default function PreparePage() {
       router.push(`/interview/session?id=${result.id}`);
     } catch (err: any) {
       setError(err.message);
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
@@ -195,17 +195,28 @@ export default function PreparePage() {
           <h2 className="text-lg font-semibold">步骤 3：开始面试</h2>
           <div>
             <label className="block text-sm font-medium mb-1">难度选择</label>
-            <select value={difficulty} onChange={(e) => setDifficulty(e.target.value)} className="w-full px-3 py-2 border rounded-lg">
+            <select value={difficulty} onChange={(e) => setDifficulty(e.target.value)} className="w-full px-3 py-2 border rounded-lg" disabled={loading}>
               <option value="easy">初级</option>
               <option value="mid">中级</option>
               <option value="hard">高级</option>
             </select>
           </div>
           <div className="flex gap-2">
-            <button onClick={() => setStep(2)} className="px-6 py-2 bg-gray-200 rounded-lg hover:bg-gray-300">上一步</button>
-            <button onClick={handleStart} disabled={loading} className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50">
-              {loading ? '创建中...' : '开始面试'}
+            <button onClick={() => setStep(2)} disabled={loading} className="px-6 py-2 bg-gray-200 rounded-lg hover:bg-gray-300 disabled:opacity-50">上一步</button>
+            <button onClick={handleStart} disabled={loading} className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2">
+              {loading ? <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />正在生成面试题目...</> : '开始面试'}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Full-screen loading overlay */}
+      {loading && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/80 backdrop-blur-sm">
+          <div className="text-center">
+            <div className="w-16 h-16 mx-auto mb-4 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+            <p className="text-gray-700 font-medium text-lg mb-1">正在创建面试</p>
+            <p className="text-gray-400 text-sm">正在根据简历和岗位要求生成面试题目...</p>
           </div>
         </div>
       )}

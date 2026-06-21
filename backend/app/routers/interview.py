@@ -40,6 +40,25 @@ async def list_interviews(
     ]
 
 
+@router.delete("/{interview_id}")
+async def delete_interview(
+    interview_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(Interview).where(
+            Interview.id == interview_id, Interview.user_id == current_user.id
+        )
+    )
+    interview = result.scalar_one_or_none()
+    if not interview:
+        raise HTTPException(status_code=404, detail="Interview not found")
+    await db.delete(interview)
+    await db.commit()
+    return {"code": 0, "message": "ok"}
+
+
 @router.post("/create", response_model=InterviewResponse, status_code=201)
 async def create_interview(
     data: CreateInterviewRequest,
