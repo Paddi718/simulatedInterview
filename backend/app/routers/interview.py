@@ -764,35 +764,64 @@ async def list_favorited_questions(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """获取当前用户所有收藏的题目（独立收藏表，不受面试删除影响）"""
+    """获取当前用户所有收藏的题目，按岗位@公司分类分组"""
     from app.models.favorited_question import FavoritedQuestion
+    from app.models.interview import Interview
+    from app.models.job_description import JobDescription
 
+    # JOIN Interview + JobDescription 获取 position/company
     result = await db.execute(
-        select(FavoritedQuestion)
+        select(FavoritedQuestion, Interview, JobDescription)
+        .outerjoin(Interview, FavoritedQuestion.source_interview_id == Interview.id)
+        .outerjoin(JobDescription, Interview.jd_id == JobDescription.id)
         .where(FavoritedQuestion.user_id == current_user.id)
         .order_by(FavoritedQuestion.created_at.desc())
     )
-    questions = result.scalars().all()
+    rows = result.all()
 
-    return {
-        "code": 0,
-        "data": [
-            {
-                "id": str(q.id),
-                "source_interview_id": str(q.source_interview_id) if q.source_interview_id else None,
-                "question_text": q.question_text,
-                "question_type": q.question_type,
-                "ai_score": q.ai_score,
-                "score_detail": q.score_detail,
-                "ai_evaluation": q.ai_evaluation,
-                "reference_answer": q.reference_answer,
-                "improvement_suggestion": q.improvement_suggestion,
-                "created_at": q.created_at.isoformat(),
+    def _item(fav: FavoritedQuestion):
+        return {
+            "id": str(fav.id),
+            "source_interview_id": str(fav.source_interview_id) if fav.source_interview_id else None,
+            "question_text": fav.question_text,
+            "question_type": fav.question_type,
+            "reference_answer": fav.reference_answer,
+            "improvement_suggestion": fav.improvement_suggestion,
+            "created_at": fav.created_at.isoformat(),
+        }
+
+    # 按 position@company 分组（保持插入顺序）
+    categories: dict[str, dict] = {}
+    for fav, interview, jd in rows:
+        jd_data = jd.parsed_data if jd and jd.parsed_data else {}
+        position = (jd_data.get("position") or "").strip()
+        company = (jd_data.get("company_info") or "").strip()
+
+        if position or company:
+            key = f"{position}@{company}" if position and company else (position or company)
+            label_position = position or "未指定岗位"
+            label_company = company or "未指定公司"
+        else:
+            key = "__uncategorized__"
+            label_position = "未分类"
+            label_company = ""
+
+        if key not in categories:
+            categories[key] = {
+                "category_key": key,
+                "position": label_position,
+                "company": label_company,
+                "items": [],
             }
-            for q in questions
-        ],
-        "message": "ok",
-    }
+        categories[key]["items"].append(_item(fav))
+
+    # 计算计数
+    result_list = []
+    for cat in categories.values():
+        cat["count"] = len(cat["items"])
+        result_list.append(cat)
+
+    return {"code": 0, "data": result_list, "message": "ok"}
 
 
 @router.delete("/favorites/{fav_id}")
