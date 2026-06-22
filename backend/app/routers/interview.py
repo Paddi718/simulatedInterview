@@ -252,6 +252,41 @@ def _cleanup_question_queue(interview_id: str):
     _question_queues.pop(interview_id, None)
 
 
+async def _pre_gen_single_tts(question_id: uuid.UUID, text: str, interview_id: uuid.UUID):
+    """后台为单道题预生成TTS音频（非阻塞）"""
+    try:
+        async with async_session_factory() as s:
+            from app.models.interview import Interview
+            from app.models.user import User
+            iv_r = await s.execute(select(Interview).where(Interview.id == interview_id))
+            iv = iv_r.scalar_one_or_none()
+            if not iv: return
+            u_r = await s.execute(select(User).where(User.id == iv.user_id))
+            user = u_r.scalar_one_or_none()
+            pref = user.tts_preference if user and user.tts_preference else {}
+            voice = pref.get('voice', 'zh-CN-XiaoxiaoNeural')
+            speed = float(pref.get('speed', 1.0))
+
+        from app.services.audio_cache import get_cached_tts, save_tts_cache, tts_cache_key
+        cached = await get_cached_tts(text, voice, speed)
+        if cached is None:
+            from app.services.tts_service import synthesize_speech
+            audio = await synthesize_speech(text, voice, speed)
+            if audio and len(audio) > 220:
+                await save_tts_cache(text, voice, speed, audio)
+
+        key = tts_cache_key(text, voice, speed)
+        async with async_session_factory() as s:
+            await s.execute(
+                update(InterviewQuestion)
+                .where(InterviewQuestion.id == question_id)
+                .values(tts_audio_path=f"tts_cache/{key}.mp3")
+            )
+            await s.commit()
+    except Exception as e:
+        print(f"[TTS single] Failed for Q{question_id}: {e}")
+
+
 async def _stream_generate_questions(
     interview_id: uuid.UUID,
     prompt_name: str,
@@ -282,6 +317,10 @@ async def _stream_generate_questions(
                 )
                 db.add(question)
                 await db.commit()
+                await db.refresh(question)
+
+                # 后台预生成该题TTS音频（不阻塞推送）
+                asyncio.create_task(_pre_gen_single_tts(question.id, question.question_text, interview_id))
 
                 # 推送到 SSE 队列
                 event_data = {
