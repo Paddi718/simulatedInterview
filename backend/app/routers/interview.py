@@ -835,12 +835,25 @@ async def list_favorited_questions(
             "created_at": fav.created_at.isoformat(),
         }
 
-    # 按 position@company 分组（保持插入顺序）
+    # 按 position@company 分组，公务员/事业单位 fallback 到 category_config
     categories: dict[str, dict] = {}
     for fav, interview, jd in rows:
         jd_data = jd.parsed_data if jd and jd.parsed_data else {}
         position = (jd_data.get("position") or "").strip()
         company = (jd_data.get("company_info") or "").strip()
+
+        # 公务员/事业单位：无 JD 时用 category_config 作为分类标签
+        if not position and not company:
+            iv_category = getattr(interview, 'interview_category', '') if interview else ''
+            iv_config = getattr(interview, 'category_config', None) if interview else None
+            if iv_category == 'civil_service':
+                province = (iv_config or {}).get('province', '')
+                position = f"{province}公务员面试" if province else "公务员面试"
+                company = (iv_config or {}).get('position_category', '')
+            elif iv_category == 'institution':
+                province = (iv_config or {}).get('province', '')
+                position = f"{province}事业单位面试" if province else "事业单位面试"
+                company = (iv_config or {}).get('position_category', '')
 
         if position or company:
             key = f"{position}@{company}" if position and company else (position or company)
