@@ -308,6 +308,21 @@ function SessionContent() {
                   genStatusRef.current='streaming';
                   setStreamStatus('streaming');
                   setPhase('question');
+                  // Q1就绪，触发自动朗读
+                  setTimeout(()=>{
+                    if(!mountedRef.current)return;
+                    const autoRead=localStorage.getItem('tts_auto_read')==='true';
+                    if(!autoRead||hasAutoReadRef.current)return;
+                    setHasAutoRead(true);hasAutoReadRef.current=true;
+                    const apiBase=process.env.NEXT_PUBLIC_API_URL||'http://localhost:8000';
+                    const token=localStorage.getItem('access_token');
+                    const url=`${apiBase}/api/interview/${interviewId}/audio/1`;
+                    stopTts();setTtsPlaying(true);setAudioLoading(true);
+                    fetch(url,{headers:token?{Authorization:`Bearer ${token}`}:{}})
+                      .then(res=>{if(!mountedRef.current)throw new Error('um');if(!res.ok)throw new Error(`HTTP ${res.status}`);return res.arrayBuffer();})
+                      .then(buf=>{if(mountedRef.current){setAudioLoading(false);playTts(buf);}})
+                      .catch(e=>{if(e.message==='um')return;console.warn('[AutoRead SSE] failed:',e.message);if(mountedRef.current){setTtsPlaying(false);setAudioLoading(false);setHasAutoRead(false);hasAutoReadRef.current=false;}});
+                  },800);
                 } else if(genStatusRef.current==='waiting'){
                   genStatusRef.current='streaming';
                   setStreamStatus('streaming');
@@ -364,6 +379,8 @@ function SessionContent() {
 
   // 自动朗读 — 直接在 effect 中发起请求
   const [hasAutoRead, setHasAutoRead] = useState(false);
+  const hasAutoReadRef = useRef(false);
+  useEffect(()=>{hasAutoReadRef.current=hasAutoRead;},[hasAutoRead]);
 
   // 自动朗读（带重试：TTS可能尚未生成完）
   useEffect(()=>{
@@ -397,6 +414,23 @@ function SessionContent() {
     };
     tryFetch(2);  // 原请求 + 2次重试 = 最多3次
   },[phase,currentIndex,questions,hasAutoRead,stopTts,interviewId]);
+
+  // 加载完成后触发自动朗读（非流式面试）
+  useEffect(()=>{
+    if(loading||!interviewId||!questions[currentIndex]||streamStatus==='waiting')return;
+    const autoRead=localStorage.getItem('tts_auto_read')==='true';
+    if(!autoRead||hasAutoRead)return;
+    setHasAutoRead(true);
+    const q=questions[currentIndex];
+    const token=localStorage.getItem('access_token');
+    const apiBase=process.env.NEXT_PUBLIC_API_URL||'http://localhost:8000';
+    const url=`${apiBase}/api/interview/${interviewId}/audio/${q.order_index}`;
+    stopTts();setTtsPlaying(true);setAudioLoading(true);
+    fetch(url,{headers:token?{Authorization:`Bearer ${token}`}:{}})
+      .then(res=>{if(!mountedRef.current)throw new Error('um');if(!res.ok)throw new Error(`HTTP ${res.status}`);return res.arrayBuffer();})
+      .then(buf=>{if(mountedRef.current){setAudioLoading(false);playTts(buf);}})
+      .catch(e=>{if(e.message==='um')return;console.warn('[AutoRead init] failed:',e.message);if(mountedRef.current){setTtsPlaying(false);setAudioLoading(false);setHasAutoRead(false);}});
+  },[loading,streamStatus]);
 
   useEffect(()=>{stopTts();setAudioLoading(false);try{(window as any).speechSynthesis?.cancel();}catch{}setHasAutoRead(false);},[currentIndex,stopTts]);
 
