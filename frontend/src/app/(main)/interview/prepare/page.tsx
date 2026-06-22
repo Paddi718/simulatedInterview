@@ -243,7 +243,8 @@ export default function PreparePage() {
       const result = await api.post<{ id: string }>('/api/interview/create', body);
       router.push(`/interview/session?id=${result.id}`);
     } catch (err: any) {
-      setError(err.message);
+      const msg = err?.message || (typeof err === 'object' ? JSON.stringify(err) : String(err || '未知错误'));
+      setError(msg);
       setLoading(false);
     }
   };

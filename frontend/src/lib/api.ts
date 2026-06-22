@@ -44,7 +44,16 @@ async function request<T>(
       localStorage.removeItem('access_token');
       window.location.href = '/login';
     }
-    throw new ApiError(json.message || json.detail || 'Request failed', res.status);
+    // 兼容 FastAPI 验证错误（detail 是数组）和普通错误
+    const errMsg = (() => {
+      if (json.message) return json.message;
+      if (typeof json.detail === 'string') return json.detail;
+      if (Array.isArray(json.detail)) {
+        return json.detail.map((d: any) => d.msg || d.message || '').filter(Boolean).join('; ');
+      }
+      return 'Request failed';
+    })();
+    throw new ApiError(errMsg, res.status);
   }
 
   // 兼容两种响应格式：统一格式 {code, data, message} 或直接返回数据
