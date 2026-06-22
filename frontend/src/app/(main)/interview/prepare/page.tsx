@@ -48,6 +48,18 @@ const DIFFICULTY_OPTIONS = [
   { value: 'hard', label: '高级', icon: Zap, desc: '架构设计与高难度问题，适合5年以上资深岗位' },
 ];
 
+const RequiredBadge = () => (
+  <span className="ml-2 inline-flex items-center text-xs font-semibold text-red-500 dark:text-red-400">
+    <span className="text-[10px] leading-none mr-[1px]">*</span>必填
+  </span>
+);
+
+const OptionalBadge = () => (
+  <span className="ml-2 inline-flex items-center px-1.5 py-0.5 text-[11px] font-medium text-gray-400 dark:text-gray-500 border border-gray-300 dark:border-gray-500 rounded">
+    选填
+  </span>
+);
+
 const CATEGORY_STEP_LABELS: Record<Category, string[]> = {
   private_enterprise: ['简历', '岗位', '难度'],
   civil_service: ['省份', '职位类别', '层级', '岗位名称'],
@@ -403,12 +415,15 @@ export default function PreparePage() {
     </div>
   );
 
-  const renderResumeCards = (showOptionalLabel = false) => (
+  const renderResumeCards = (optional = false) => (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">选择简历</h2>
-        <p className={`text-sm mt-1 ${showOptionalLabel ? 'text-gray-500 dark:text-gray-400' : 'text-gray-500 dark:text-gray-400'}`}>
-          {showOptionalLabel ? '可选，选择一份已有简历或上传新的简历文件' : '选择一份已有简历，或上传新的简历文件'}
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+          选择简历
+          {optional ? <OptionalBadge /> : <RequiredBadge />}
+        </h2>
+        <p className={`text-sm mt-1 text-gray-500 dark:text-gray-400`}>
+          {optional ? '可选，选择一份已有简历或上传新的简历文件' : '选择一份已有简历，或上传新的简历文件'}
         </p>
       </div>
       {resumes.length > 0 && (
@@ -420,7 +435,9 @@ export default function PreparePage() {
               className={`rounded-2xl border p-4 cursor-pointer transition-all duration-200 ${
                 selectedResume === r.id
                   ? 'border-brand-500 bg-brand-50/60 dark:bg-brand-950/30 dark:border-brand-500 shadow-sm shadow-brand-100 dark:shadow-brand-900/20'
-                  : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-sm'
+                  : optional
+                    ? 'border-dashed border-gray-300 dark:border-gray-600 bg-gray-50/40 dark:bg-gray-900/60 hover:border-gray-400 dark:hover:border-gray-500 hover:shadow-sm'
+                    : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-sm'
               }`}
             >
               <div className="flex items-center gap-3.5">
@@ -454,7 +471,9 @@ export default function PreparePage() {
       <div className={`relative rounded-2xl border-2 border-dashed p-8 text-center transition-colors ${
         uploadingResume
           ? 'border-brand-300 bg-brand-50/50 dark:border-brand-600 dark:bg-brand-950/20'
-          : 'border-gray-200 dark:border-gray-700 hover:border-brand-300 dark:hover:border-brand-600 bg-white dark:bg-gray-900'
+          : optional
+            ? 'border-gray-300 dark:border-gray-600 hover:border-brand-300 dark:hover:border-brand-600 bg-gray-50/40 dark:bg-gray-900/60'
+            : 'border-gray-200 dark:border-gray-700 hover:border-brand-300 dark:hover:border-brand-600 bg-white dark:bg-gray-900'
       }`}>
         {uploadingResume ? (
           <div className="flex flex-col items-center gap-3">
@@ -491,11 +510,16 @@ export default function PreparePage() {
     </div>
   );
 
-  const renderJDSelection = () => (
+  const renderJDSelection = (optional = false) => (
     <div className="space-y-6">
       <div>
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">选择岗位介绍</h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">选择已有岗位介绍，或粘贴新的岗位描述</p>
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+          选择岗位介绍
+          {optional ? <OptionalBadge /> : <RequiredBadge />}
+        </h2>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+          {optional ? '可选，选择已有岗位介绍，或粘贴新的岗位描述' : '选择已有岗位介绍，或粘贴新的岗位描述'}
+        </p>
       </div>
       {jds.length > 0 && (
         <div className="space-y-2.5">
@@ -506,7 +530,9 @@ export default function PreparePage() {
               className={`group rounded-2xl border p-4 cursor-pointer transition-all duration-200 ${
                 selectedJd === j.id
                   ? 'border-brand-500 bg-brand-50/60 dark:bg-brand-950/30 dark:border-brand-500 shadow-sm shadow-brand-100 dark:shadow-brand-900/20'
-                  : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-sm'
+                  : optional
+                    ? 'border-dashed border-gray-300 dark:border-gray-600 bg-gray-50/40 dark:bg-gray-900/60 hover:border-gray-400 dark:hover:border-gray-500 hover:shadow-sm'
+                    : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-sm'
               }`}
             >
               <div className="flex items-center gap-3.5">
@@ -549,7 +575,9 @@ export default function PreparePage() {
           ))}
         </div>
       )}
-      <div className="bg-white dark:bg-gray-900 rounded-2xl border border-gray-200 dark:border-gray-700 overflow-hidden transition-all focus-within:border-brand-400 dark:focus-within:border-brand-500 focus-within:shadow-sm">
+      <div className={`bg-white dark:bg-gray-900 rounded-2xl border overflow-hidden transition-all focus-within:border-brand-400 dark:focus-within:border-brand-500 focus-within:shadow-sm ${
+        optional ? 'border-dashed border-gray-300 dark:border-gray-600' : 'border-gray-200 dark:border-gray-700'
+      }`}>
         <textarea
           value={jdText}
           onChange={(e) => { setJdText(e.target.value); if (e.target.value) setSelectedJd(''); }}
@@ -577,7 +605,9 @@ export default function PreparePage() {
     onChange: (v: string) => void,
   ) => (
     <div>
-      <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">选择难度</h2>
+      <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+        选择难度<RequiredBadge />
+      </h2>
       <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">选择适合你经验水平的面试难度</p>
       <div className="grid gap-3 mt-5">
         {DIFFICULTY_OPTIONS.map(opt => {
@@ -790,7 +820,9 @@ export default function PreparePage() {
                 {step === 1 && (
                   <div className="space-y-6 animate-fade-in">
                     <div>
-                      <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">选择省份</h2>
+                      <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                        选择省份<RequiredBadge />
+                      </h2>
                       <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">选择报考的省份</p>
                     </div>
                     {renderProvinceSelect()}
@@ -802,7 +834,9 @@ export default function PreparePage() {
                 {step === 2 && (
                   <div className="space-y-6 animate-fade-in">
                     <div>
-                      <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">选择职位类别</h2>
+                      <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                        选择职位类别<RequiredBadge />
+                      </h2>
                       <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">选择报考的职位类别</p>
                     </div>
                     {renderCardGrid(CIVIL_POSITION_CATEGORIES, positionCategory, setPositionCategory)}
@@ -814,7 +848,9 @@ export default function PreparePage() {
                 {step === 3 && (
                   <div className="space-y-6 animate-fade-in">
                     <div>
-                      <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">选择层级</h2>
+                      <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                        选择层级<RequiredBadge />
+                      </h2>
                       <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">选择报考的层级</p>
                     </div>
                     {renderCardGrid(CIVIL_LEVELS, level, setLevel)}
@@ -833,14 +869,14 @@ export default function PreparePage() {
                     {/* Position Name */}
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                        岗位名称 <span className="text-gray-400 dark:text-gray-500 font-normal">(可选)</span>
+                        岗位名称<OptionalBadge />
                       </label>
                       <input
                         type="text"
                         value={positionName}
                         onChange={(e) => setPositionName(e.target.value)}
-                        placeholder="例如：国家税务总局办公厅一级主任科员"
-                        className="w-full rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-5 py-3 text-sm text-gray-700 dark:text-gray-300 placeholder:text-gray-400 dark:placeholder:text-gray-600 focus:outline-none focus:border-brand-400 dark:focus:border-brand-500 focus:shadow-sm transition-all"
+                        placeholder="选填，如'税务局一级科员'"
+                        className="w-full rounded-2xl border border-dashed border-gray-300 dark:border-gray-600 bg-gray-50/40 dark:bg-gray-900/60 px-5 py-3 text-sm text-gray-700 dark:text-gray-300 placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:border-brand-400 dark:focus:border-brand-500 focus:bg-white dark:focus:bg-gray-900 focus:shadow-sm transition-all"
                       />
                     </div>
 
@@ -891,7 +927,9 @@ export default function PreparePage() {
                 {step === 1 && (
                   <div className="space-y-6 animate-fade-in">
                     <div>
-                      <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">选择省份</h2>
+                      <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                        选择省份<RequiredBadge />
+                      </h2>
                       <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">选择报考的省份</p>
                     </div>
                     {renderProvinceSelect()}
@@ -903,7 +941,9 @@ export default function PreparePage() {
                 {step === 2 && (
                   <div className="space-y-6 animate-fade-in">
                     <div>
-                      <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">选择职位类别</h2>
+                      <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                        选择职位类别<RequiredBadge />
+                      </h2>
                       <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">选择报考的职位类别</p>
                     </div>
                     {renderCardGrid(INST_POSITION_CATEGORIES, positionCategory, setPositionCategory)}
@@ -929,7 +969,7 @@ export default function PreparePage() {
 
                     {/* JD (optional) */}
                     <div className="opacity-80 hover:opacity-100 transition-opacity">
-                      {renderJDSelection()}
+                      {renderJDSelection(true)}
                     </div>
 
                     {/* Divider */}
