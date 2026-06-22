@@ -53,14 +53,21 @@ type DifficultyFilter = 'all' | 'easy' | 'medium' | 'hard';
 
 const difficultyLabels: Record<string, string> = {
   easy: '初级',
+  mid: '中级',
   medium: '中级',
   hard: '高级',
 };
 
 const difficultyBarColor: Record<string, string> = {
   easy: 'bg-green-500',
+  mid: 'bg-yellow-500',
   medium: 'bg-yellow-500',
   hard: 'bg-red-500',
+};
+
+const categoryBarColor: Record<string, string> = {
+  civil_service: 'bg-red-500',
+  institution: 'bg-emerald-500',
 };
 
 const difficultyFilters: { key: DifficultyFilter; label: string }[] = [
@@ -356,11 +363,11 @@ function HistoryPageContent() {
                   }
                   className="flex items-center gap-4 p-5 flex-1 min-w-0"
                 >
-                  {/* Colored difficulty indicator bar */}
+                  {/* Colored indicator bar — category-specific for civil service/institution */}
                   <div
                     className={cn(
                       'w-1 h-12 shrink-0 rounded-full',
-                      difficultyBarColor[r.difficulty] || 'bg-gray-300'
+                      (r.category && categoryBarColor[r.category]) || difficultyBarColor[r.difficulty] || 'bg-gray-300'
                     )}
                   />
 
@@ -368,36 +375,45 @@ function HistoryPageContent() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
-                        {r.position || (r.category === 'civil_service'
-                          ? `${r.category_config?.province || ''}公务员面试`
-                          : r.category === 'institution'
-                            ? `${r.category_config?.province || ''}事业单位面试`
-                            : '模拟面试')}
+                        {r.position
+                          ? r.position
+                          : r.category === 'civil_service'
+                            ? `${r.category_config?.province || ''}公务员面试`
+                            : r.category === 'institution'
+                              ? `${r.category_config?.province || ''}事业单位面试`
+                              : '模拟面试'}
                         {r.company && (
                           <span className="text-gray-400 dark:text-gray-500 font-normal ml-1.5">
                             @{r.company}
                           </span>
                         )}
                       </p>
-                      {r.category && r.category !== 'private_enterprise' && (
+                      {r.category && (
                         <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium shrink-0 ${CATEGORY_COLORS[r.category] || ''}`}>
                           {CATEGORY_LABELS[r.category] || r.category}
                         </span>
                       )}
                     </div>
                     <div className="flex items-center gap-2 mt-1.5">
-                      <span
-                        className={cn(
-                          'inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium leading-tight',
-                          r.difficulty === 'easy'
-                            ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                            : r.difficulty === 'hard'
-                              ? 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                              : 'bg-yellow-50 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
-                        )}
-                      >
-                        {difficultyLabels[r.difficulty] || '未知'}
-                      </span>
+                      {/* 公务员/事业单位：显示层级和岗位类别；私企：显示难度 */}
+                      {(r.category === 'civil_service' || r.category === 'institution') ? (
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium leading-tight ${CATEGORY_COLORS[r.category] || ''}`}>
+                          {r.category_config?.level || ''}{r.category_config?.level && r.category_config?.position_category ? '·' : ''}{r.category_config?.position_category || ''}
+                        </span>
+                      ) : (
+                        <span
+                          className={cn(
+                            'inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium leading-tight',
+                            r.difficulty === 'easy'
+                              ? 'bg-green-50 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                              : r.difficulty === 'hard'
+                                ? 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                                : 'bg-yellow-50 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                          )}
+                        >
+                          {difficultyLabels[r.difficulty] || '未知'}
+                        </span>
+                      )}
                       <span className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
                         <Clock className="h-3 w-3" />
                         {formatDate(r.created_at)}
