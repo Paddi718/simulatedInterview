@@ -757,9 +757,12 @@ function SessionContent() {
               </h2>
               {phase==='question'&&(
                 <div className="flex items-center gap-1.5">
-                  <button onClick={playQuestionAudio} disabled={ttsPlaying||audioLoading}
-                    className="flex-shrink-0 w-9 h-9 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 flex items-center justify-center disabled:opacity-40 transition-all" title="朗读题目">
-                    {audioLoading?<Loader2 className="w-4 h-4 text-brand-500 animate-spin" />:<Volume2 className={`w-4 h-4 text-gray-500 dark:text-gray-400 ${ttsPlaying?'animate-pulse':''}`} />}
+                  <button
+                    onClick={()=>{ttsPlaying?stopTts():playQuestionAudio();}}
+                    disabled={audioLoading}
+                    className="flex-shrink-0 w-9 h-9 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 flex items-center justify-center disabled:opacity-40 transition-all"
+                    title={ttsPlaying?'停止朗读':'朗读题目'}>
+                    {audioLoading?<Loader2 className="w-4 h-4 text-brand-500 animate-spin" />:ttsPlaying?<Square className="w-4 h-4 text-brand-500" />:<Volume2 className="w-4 h-4 text-gray-500 dark:text-gray-400" />}
                   </button>
                   <button onClick={toggleFavorite}
                     className={`flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center transition-all ${
