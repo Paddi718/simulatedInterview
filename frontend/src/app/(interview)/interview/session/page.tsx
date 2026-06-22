@@ -552,7 +552,7 @@ function SessionContent() {
       setCurrentIndex(next);setPhase('question');setTranscript('');setLiveText('');setTimer(0);setRecordedTime(0);setFeedback(null);
       // 思考计时器由 effect 统一管理，不再手动启动
     }
-    else setShowConfirm(true);
+    else {setPhase('review');setShowConfirm(true);}
   },[currentIndex,questions]);
 
   const handleSkip=useCallback(()=>{if(phase==='scoring'||phase==='submitting')return;if(phase==='recording')stopRecording();setTimeout(()=>submitAnswer('',true),300);},[phase,stopRecording,submitAnswer]);
@@ -560,7 +560,7 @@ function SessionContent() {
 
   /* ---------- Render ---------- */
   const total=questions.length,currentQ=questions[currentIndex];
-  const progress=total>0?(currentIndex/total)*100:0;
+  const progress=showConfirm?100:total>0?Math.round((currentIndex/total)*100):0;
   const displayText=transcript||liveText||'';
   const showTimer=recordedTime>0;
 
