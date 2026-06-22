@@ -106,7 +106,9 @@ function SessionContent() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [completing, setCompleting] = useState(false);
   const [hasSpeechAPI, setHasSpeechAPI] = useState(true);
-  const [generating, setGenerating] = useState(false);
+  // 流式出题状态: idle=正常 | waiting=等Q1(全屏动画) | streaming=已出Q1剩余生成中 | done=全部完成
+  const [streamStatus, setStreamStatus] = useState<'idle'|'waiting'|'streaming'|'done'>('idle');
+  const genStatusRef = useRef<'idle'|'waiting'|'streaming'|'done'>('idle'); // SSE 闭包内使用
   const [genTotal, setGenTotal] = useState(0);
   const [genCount, setGenCount] = useState(0);
 
@@ -257,10 +259,12 @@ function SessionContent() {
 
       // 流式生成中 → 连接 SSE 逐题接收
       if(d.status==='generating'){
-        setGenerating(true);
+        genStatusRef.current='waiting';setStreamStatus('waiting');
         setPhase('generating');
         setGenTotal(0); setGenCount(qs.length);
         connectQuestionSSE();
+      } else {
+        genStatusRef.current='done';setStreamStatus('done');
       }
     }catch(e:any){setError(e.message||'加载失败');}finally{setLoading(false);}
   },[interviewId,router]);
@@ -270,17 +274,16 @@ function SessionContent() {
     if(!interviewId) return;
     if(questionSseRef.current){questionSseRef.current.close();questionSseRef.current=null;}
     const token=localStorage.getItem('access_token');
-    const base=(process.env.NEXT_PUBLIC_API_URL||'http://localhost:8000').replace(/^http/,'ws');
     const url=`${(process.env.NEXT_PUBLIC_API_URL||'http://localhost:8000')}/api/interview/${interviewId}/stream-questions?token=${token}`;
 
     fetch(url,{headers:token?{Authorization:`Bearer ${token}`}:{}}).then(async(res)=>{
-      if(!res.ok||!res.body)return;
+      if(!res.ok||!res.body) return;
       const reader=res.body.getReader();
       const decoder=new TextDecoder();
       let buf='';
       while(true){
         const{done,value}=await reader.read();
-        if(done||!mountedRef.current)break;
+        if(done||!mountedRef.current) break;
         buf+=decoder.decode(value,{stream:true});
         const lines=buf.split('\n');
         buf=lines.pop()||'';
@@ -289,22 +292,50 @@ function SessionContent() {
             try{
               const data=JSON.parse(line.slice(6));
               if(data.type==='question'){
-                setQuestions(prev=>{const exists=prev.find(q=>q.order_index===data.index);if(exists)return prev;return[...prev,{order_index:data.index,question_text:data.question.question_text,question_type:data.question.question_type}].sort((a,b)=>a.order_index-b.order_index);});
+                setQuestions(prev=>{
+                  const exists=prev.find(q=>q.order_index===data.index);
+                  if(exists) return prev;
+                  return [...prev,{
+                    order_index:data.index,
+                    question_text:data.question.question_text,
+                    question_type:data.question.question_type,
+                  }].sort((a,b)=>a.order_index-b.order_index);
+                });
                 setGenCount(data.index);
                 setGenTotal(data.total);
-                // Q1 到达 → 立即切换到答题模式，但 generating 保持直到全部完成
-                if(data.index===1 && phase==='generating'){
+                // Q1 到达 → 切换到答题模式
+                if(data.index===1 && genStatusRef.current==='waiting'){
+                  genStatusRef.current='streaming';
+                  setStreamStatus('streaming');
                   setPhase('question');
+                } else if(genStatusRef.current==='waiting'){
+                  genStatusRef.current='streaming';
+                  setStreamStatus('streaming');
                 }
               }else if(data.type==='done'){
-                setGenerating(false);
-                if(phase==='generating')setPhase('question');
+                genStatusRef.current='done';
+                setStreamStatus('done');
               }
             }catch{}
           }
         }
       }
-    }).catch(()=>{});
+    }).catch(()=>{
+      // SSE 失败降级：轮询
+      setTimeout(async()=>{
+        if(!mountedRef.current||genStatusRef.current==='done') return;
+        try{
+          const d=await api.get<{questions:Question[];status:string}>(`/api/interview/${interviewId}`);
+          const qs=d.questions||[];
+          if(qs.length>0){
+            setQuestions(qs);
+            setGenCount(qs.length);
+            genStatusRef.current='done';setStreamStatus('done');
+            setPhase('question');
+          }
+        }catch{}
+      },3000);
+    });
   },[interviewId]);
 
   useEffect(()=>{loadInterview();connectWs();return ()=>{if(wsTimerRef.current)clearTimeout(wsTimerRef.current);if(questionSseRef.current){questionSseRef.current.close();questionSseRef.current=null;}};},[loadInterview,connectWs]);
@@ -564,8 +595,8 @@ function SessionContent() {
     );
   }
 
-  // Generating state — AI 出题中，显示动画等待 Q1
-  if(generating && questions.length === 0) {
+  // Waiting state — 等 Q1，显示动画
+  if(streamStatus === 'waiting' && questions.length === 0) {
     return (
       <div className="min-h-screen bg-gray-50/50 dark:bg-gray-950 flex items-center justify-center">
         <div className="text-center max-w-sm mx-4">
@@ -590,7 +621,7 @@ function SessionContent() {
   }
 
   // No questions — 生成失败或异常
-  if(!currentQ && questions.length === 0 && !generating && !loading) {
+  if(!currentQ && questions.length === 0 && streamStatus === 'done' && !loading) {
     return (
       <div className="min-h-screen bg-gray-50/50 dark:bg-gray-950 flex items-center justify-center">
         <div className="text-center max-w-sm mx-4">
@@ -696,41 +727,29 @@ function SessionContent() {
           {/* ======== Phase-based rendering ======== */}
           <div className="px-6 sm:px-8 py-6 sm:py-8">
 
-            {/* ---- generating: AI 正在出题 ---- */}
-            {phase==='generating'&&(
-              <div className="flex flex-col items-center gap-5 py-6">
-                <Loader2 className="w-10 h-10 text-brand-500 animate-spin" />
-                <div className="text-center">
-                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                    AI 正在生成面试题目...
-                  </p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                    {genCount > 0
-                      ? `已生成 ${genCount}${genTotal ? '/' + genTotal : ''} 题`
-                      : '正在分析简历和岗位要求'}
-                  </p>
+            {/* ---- generating: 过渡态（Q1已到但phase未切换的瞬态） ---- */}
+            {phase==='generating'&&questions.length>0&&(
+              <div className="flex flex-col items-center gap-4 py-6">
+                <Loader2 className="w-8 h-8 text-brand-500 animate-spin" />
+                <p className="text-sm text-gray-500">题目加载中...</p>
+                <div className="w-full space-y-1 max-h-36 overflow-y-auto">
+                  {questions.map(q => (
+                    <div key={q.order_index} className="flex items-center gap-2 text-xs text-gray-500 bg-gray-50 dark:bg-gray-800/50 rounded-lg px-3 py-1.5">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
+                      <span className="truncate">第{q.order_index}题: {q.question_text.slice(0, 50)}</span>
+                    </div>
+                  ))}
                 </div>
-                {/* 已生成的题目列表 */}
-                {questions.length > 0 && (
-                  <div className="w-full space-y-1.5 max-h-48 overflow-y-auto">
-                    {questions.map(q => (
-                      <div key={q.order_index} className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 rounded-lg px-3 py-1.5">
-                        <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
-                        <span className="truncate">第{q.order_index}题: {q.question_text.slice(0, 40)}...</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
             )}
 
             {/* ---- question: ready to record ---- */}
             {phase==='question'&&(
               <div className="flex flex-col items-center gap-6">
-                {generating && genCount < (genTotal||999) && (
+                {streamStatus === 'streaming' && (
                   <div className="flex items-center gap-2 text-xs text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/30 px-4 py-2 rounded-xl border border-brand-100 dark:border-brand-900">
                     <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                    剩余题目生成中（{genCount}/{genTotal||'?'}），当前可答题
+                    剩余题目生成中（{genCount}/{genTotal}），当前可答题
                   </div>
                 )}
                 {!hasSpeechAPI&&(
@@ -969,14 +988,14 @@ function SessionContent() {
                     <button
                       onClick={canAdvance ? moveToNextOrComplete : undefined}
                       disabled={!canAdvance}
-                      title={!canAdvance && generating ? '下一题尚未生成，请稍候...' : ''}
+                      title={!canAdvance && (streamStatus === 'streaming' || streamStatus === 'waiting') ? '下一题尚未生成，请稍候...' : ''}
                       className={`w-full inline-flex items-center justify-center gap-2 px-6 py-3 text-white font-medium rounded-xl transition-all shadow-sm ${
                         canAdvance
                           ? 'bg-brand-500 hover:bg-brand-600 shadow-brand-200 dark:shadow-brand-900'
                           : 'bg-gray-300 dark:bg-gray-700 cursor-not-allowed'
                       }`}
                     >
-                      {generating && !nextQExists && currentIndex < questions.length - 1 ? (
+                      {(streamStatus === 'streaming' || streamStatus === 'waiting') && !nextQExists && currentIndex < questions.length - 1 ? (
                         <><Loader2 className="w-4 h-4 animate-spin" /> 题目生成中...</>
                       ) : currentIndex < questions.length - 1 ? (
                         <>下一题 <ChevronRight className="w-4 h-4" /></>
