@@ -560,7 +560,8 @@ function SessionContent() {
 
   /* ---------- Render ---------- */
   const total=questions.length,currentQ=questions[currentIndex];
-  const progress=showConfirm?100:total>0?Math.round((currentIndex/total)*100):0;
+  const answeredCount = questions.filter(q => q.user_answer_transcript).length;
+  const progress = total>0 ? Math.round((answeredCount/total)*100) : 0;
   const displayText=transcript||liveText||'';
   const showTimer=recordedTime>0;
 
