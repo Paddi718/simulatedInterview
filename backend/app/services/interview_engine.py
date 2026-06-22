@@ -129,6 +129,26 @@ class InterviewEngine:
         interview.started_at = datetime.now(timezone.utc)
         await db.commit()
         await db.refresh(interview)
+
+        # 恢复面试时，后台预生成所有题目的 TTS 音频（避免首次播放等待 8 秒）
+        from sqlalchemy.orm import selectinload
+        r = await db.execute(
+            select(Interview)
+            .where(Interview.id == interview_id)
+            .options(selectinload(Interview.questions))
+        )
+        iv = r.scalar_one_or_none()
+        if iv and iv.questions:
+            questions_for_tts = [
+                (q.id, q.question_text)
+                for q in sorted(iv.questions, key=lambda x: x.order_index)
+            ]
+            asyncio.create_task(_pre_generate_tts(
+                user_id=interview.user_id,
+                interview_id=interview_id,
+                questions=questions_for_tts,
+            ))
+
         return interview
 
     @staticmethod
@@ -191,49 +211,50 @@ async def _pre_generate_tts(
     interview_id: uuid.UUID,
     questions: list[tuple[uuid.UUID, str]],  # [(question_id, question_text), ...]
 ):
-    """后台任务：预生成所有题目的 TTS 音频并写入缓存 + 数据库路径"""
+    """后台任务：并行预生成所有题目的 TTS 音频（~8s 完成全部，而非 N×8s）"""
     try:
         from app.database import async_session_factory
         from app.services.tts_service import synthesize_speech
         from app.services.audio_cache import get_cached_tts, save_tts_cache, tts_cache_key
+        from app.models.user import User
 
+        # 先获取用户 TTS 偏好
         async with async_session_factory() as db:
-            # 获取用户的 TTS 偏好
-            from app.models.user import User
             result = await db.execute(select(User).where(User.id == user_id))
             user = result.scalar_one_or_none()
             tts_pref = user.tts_preference if user and user.tts_preference else {}
             voice = tts_pref.get('voice', 'zh-CN-XiaoxiaoNeural')
             speed = float(tts_pref.get('speed', 1.0))
 
-            for q_id, q_text in questions:
-                if not q_text:
-                    continue
-                try:
-                    # 检查缓存
-                    cached = await get_cached_tts(q_text, voice, speed)
-                    if cached is None:
-                        # 生成 TTS 并缓存
-                        audio_bytes = await synthesize_speech(q_text, voice, speed)
-                        if audio_bytes and len(audio_bytes) > 220:
-                            await save_tts_cache(q_text, voice, speed, audio_bytes)
+        async def _gen_one(q_id: uuid.UUID, q_text: str):
+            """生成单道题的 TTS + 写入缓存 + 更新 DB 路径"""
+            if not q_text:
+                return
+            try:
+                cached = await get_cached_tts(q_text, voice, speed)
+                if cached is None:
+                    audio_bytes = await synthesize_speech(q_text, voice, speed)
+                    if audio_bytes and len(audio_bytes) > 220:
+                        await save_tts_cache(q_text, voice, speed, audio_bytes)
 
-                    # 将缓存路径写入数据库（确保前端可直接通过 ID 索引）
-                    cache_key = tts_cache_key(q_text, voice, speed)
+                # 写入数据库路径
+                cache_key = tts_cache_key(q_text, voice, speed)
+                async with async_session_factory() as db:
                     await db.execute(
                         update(InterviewQuestion)
                         .where(InterviewQuestion.id == q_id)
                         .values(tts_audio_path=f"tts_cache/{cache_key}.mp3")
                     )
                     await db.commit()
-                except asyncio.CancelledError:
-                    logger.info(f"[TTS pre-gen] Cancelled for interview {interview_id}")
-                    return
-                except Exception as e:
-                    logger.warning(f"[TTS pre-gen] Failed for question {q_id}: {e}")
-                    continue
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.warning(f"[TTS pre-gen] Failed for question {q_id}: {e}")
 
-            logger.info(f"[TTS pre-gen] Completed for interview {interview_id}, {len(questions)} questions")
+        # 并行执行所有题目的 TTS 预生成
+        await asyncio.gather(*[_gen_one(q_id, text) for q_id, text in questions])
+
+        logger.info(f"[TTS pre-gen] Completed for interview {interview_id}, {len(questions)} questions")
     except asyncio.CancelledError:
         logger.info(f"[TTS pre-gen] Task cancelled for interview {interview_id}")
     except Exception as e:

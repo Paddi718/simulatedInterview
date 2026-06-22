@@ -1,0 +1,49 @@
+# ============================
+# Git 属性 — 统一换行符 & 文件分类
+# ============================
+
+# 文本文件：自动标准化换行符
+*               text=auto
+
+# 源码
+*.ts            text eol=lf
+*.tsx           text eol=lf
+*.js            text eol=lf
+*.jsx           text eol=lf
+*.py            text eol=lf
+*.yaml          text eol=lf
+*.yml           text eol=lf
+*.json          text eol=lf
+*.toml          text eol=lf
+*.md            text eol=lf
+*.css           text eol=lf
+*.html          text eol=lf
+*.xml           text eol=lf
+
+# Shell 脚本
+*.sh            text eol=lf
+*.bash          text eol=lf
+
+# 配置文件
+Dockerfile      text eol=lf
+.env.*          text eol=lf
+.gitignore      text eol=lf
+.gitattributes  text eol=lf
+
+# 二进制文件（不用 diff）
+*.png           binary
+*.jpg           binary
+*.jpeg          binary
+*.gif           binary
+*.ico           binary
+*.svg           binary
+*.webp          binary
+*.woff          binary
+*.woff2         binary
+*.ttf           binary
+*.eot           binary
+*.mp3           binary
+*.wav           binary
+*.ogg           binary
+*.webm          binary
+*.pdf           binary

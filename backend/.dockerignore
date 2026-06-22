@@ -1,0 +1,43 @@
+# ============================
+# 后端 Docker 构建忽略
+# ============================
+
+# Git
+.git/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+venv/
+.venv/
+
+# 环境变量
+.env
+.env.local
+.env.production
+
+# 模型（挂载 volume）
+models/
+*.pt
+*.pth
+
+# 测试 / 开发文件
+tests/
+test_*/
+*.log
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Alembic 迁移已有版本（保留在镜像中，但排除多余文件）
+# alembic/versions/*.py — 保留，需要运行迁移

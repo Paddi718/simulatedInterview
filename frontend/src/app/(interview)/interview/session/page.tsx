@@ -139,11 +139,20 @@ function SessionContent() {
   const audioBlobUrlRef = useRef<string | null>(null);
   const audioPlayingRef = useRef(false); // 同步标记，避免React状态延迟
 
-  // 确保 audio 元素存在
+  // 确保 audio 元素存在（单例 + 持久事件监听，state 完全跟随真实播放状态）
   const getAudioEl = useCallback(() => {
     if (!audioElRef.current) {
-      audioElRef.current = new Audio();
-      audioElRef.current.preload = 'auto';
+      const el = new Audio();
+      el.preload = 'auto';
+      // 用音频元素的原生事件作为「是否在朗读」的唯一真实源，杜绝 state 与实际播放脱节
+      const onPlay = () => { audioPlayingRef.current = true; setTtsPlaying(true); };
+      const onStop = () => { audioPlayingRef.current = false; setTtsPlaying(false); };
+      el.addEventListener('play', onPlay);
+      el.addEventListener('playing', onPlay);
+      el.addEventListener('pause', onStop);
+      el.addEventListener('ended', onStop);
+      el.addEventListener('error', onStop);
+      audioElRef.current = el;
     }
     return audioElRef.current;
   }, []);
@@ -170,8 +179,7 @@ function SessionContent() {
       audioBlobUrlRef.current = url;
       const el = getAudioEl();
       el.src = url;
-      el.onended = () => { audioPlayingRef.current = false; setTtsPlaying(false); };
-      el.onerror = () => { console.warn('[TTS] Audio playback error'); audioPlayingRef.current = false; setTtsPlaying(false); };
+      // play/pause/ended/error 由 getAudioEl 持久监听统一同步 state，这里只做乐观置位
       audioPlayingRef.current = true;
       setTtsPlaying(true);
       el.play().catch((e) => {
@@ -214,7 +222,7 @@ function SessionContent() {
     }, 800);
   },[interviewId]);
 
-  // 通过 REST API 获取预生成的 Edge-TTS 音频并播放
+  // 通过 REST API 获取预生成的 Edge-TTS 音频并播放（202→轮询直到就绪）
   const playQuestionAudio=useCallback(async()=>{
     if(!interviewId||!questions[currentIndex])return;
     stopTts();
@@ -224,11 +232,21 @@ function SessionContent() {
     const token=localStorage.getItem('access_token');
     const apiBase=process.env.NEXT_PUBLIC_API_URL||'http://localhost:8000';
     const url=`${apiBase}/api/interview/${interviewId}/audio/${orderIndex}`;
-    try{
+
+    const tryFetch=async(retries:number):Promise<ArrayBuffer>=>{
       const res=await fetch(url,{headers:token?{Authorization:`Bearer ${token}`}:{}});
-      if(!mountedRef.current)return;
+      if(!mountedRef.current)throw new Error('unmounted');
+      if(res.status===202 && retries>0){
+        // 后台正在生成 TTS，1 秒后轮询
+        await new Promise(r=>setTimeout(r,1000));
+        return tryFetch(retries-1);
+      }
       if(!res.ok)throw new Error(`HTTP ${res.status}`);
-      const buf=await res.arrayBuffer();
+      return res.arrayBuffer();
+    };
+
+    try{
+      const buf=await tryFetch(15);  // 最多等 15 秒（15次×1s）
       if(!mountedRef.current)return;
       setAudioLoading(false);
       playTts(buf);
@@ -372,7 +390,7 @@ function SessionContent() {
       mountedRef.current = false;
       if (timerRef.current) clearInterval(timerRef.current);
       if (wsTimerRef.current) clearTimeout(wsTimerRef.current);
-      if (audioElRef.current) { try { audioElRef.current.pause(); } catch {} audioElRef.current = null; }
+      if (audioElRef.current) { try { audioElRef.current.pause(); } catch {} }
       stopAll();
       stopTts();
       if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
@@ -402,20 +420,32 @@ function SessionContent() {
       setTtsPlaying(true);
       setAudioLoading(true);
       fetch(url,{headers:token?{Authorization:`Bearer ${token}`}:{}})
-        .then(res=>{if(!mountedRef.current)throw new Error('unmounted');if(!res.ok)throw new Error(`HTTP ${res.status}`);return res.arrayBuffer();})
-        .then(buf=>{if(!mountedRef.current)return;setAudioLoading(false);setHasAutoRead(true);playTts(buf);})
+        .then(async res=>{
+          if(!mountedRef.current)throw new Error('unmounted');
+          if(res.status===202 && retries>0){
+            // 后台正在生成，1s后轮询
+            await new Promise(r=>setTimeout(r,1000));
+            return tryFetch(retries-1);
+          }
+          if(!res.ok)throw new Error(`HTTP ${res.status}`);
+          return res.arrayBuffer();
+        })
+        .then(buf=>{
+          if(!buf || !mountedRef.current)return;
+          setAudioLoading(false);setHasAutoRead(true);playTts(buf as ArrayBuffer);
+        })
         .catch(e=>{
           if(e.message==='unmounted')return;
           if(retries > 0){
-            console.warn(`[AutoRead] retry in 2s (${retries} left):`, e.message);
-            setTimeout(()=>tryFetch(retries-1), 2000);
+            console.warn(`[AutoRead] retry in 1s (${retries} left):`, e.message);
+            setTimeout(()=>tryFetch(retries-1), 1000);
           }else{
             console.warn('[AutoRead] failed after retries:', e.message);
             if(mountedRef.current){setTtsPlaying(false);setAudioLoading(false);setHasAutoRead(true);}
           }
         });
     };
-    tryFetch(2);  // 原请求 + 2次重试 = 最多3次
+    tryFetch(15);  // 最多等 15 秒
   },[phase,currentIndex,questions,hasAutoRead,stopTts,interviewId]);
 
   useEffect(()=>{stopTts();setAudioLoading(false);try{(window as any).speechSynthesis?.cancel();}catch{}setHasAutoRead(false);},[currentIndex,stopTts]);

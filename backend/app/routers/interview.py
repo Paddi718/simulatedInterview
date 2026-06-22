@@ -940,6 +940,10 @@ async def transcribe_audio(
                     pass
 
 
+# 正在生成中的 TTS 集合，避免重复触发后台任务
+_pending_tts: set[str] = set()
+
+
 @router.get("/{interview_id}/audio/{order_index}")
 async def get_question_audio(
     interview_id: uuid.UUID,
@@ -947,7 +951,7 @@ async def get_question_audio(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """获取预生成的 TTS 题目朗读音频"""
+    """获取预生成的 TTS 题目朗读音频（缓存命中即时返回，未命中后台生成 + 202）"""
     # 验证面试属于当前用户
     result = await db.execute(
         select(Interview).where(Interview.id == interview_id, Interview.user_id == current_user.id)
@@ -966,10 +970,8 @@ async def get_question_audio(
     if not question:
         raise HTTPException(status_code=404, detail="Question not found")
 
-    # 尝试从缓存路径读取
-    from app.services.audio_cache import get_cached_tts, tts_cache_key
+    from app.services.audio_cache import get_cached_tts, save_tts_cache, tts_cache_key
     from app.services.tts_service import synthesize_speech
-    from pathlib import Path
 
     # 获取用户 TTS 偏好
     user_result = await db.execute(select(User).where(User.id == current_user.id))
@@ -978,22 +980,41 @@ async def get_question_audio(
     voice = tts_pref.get('voice', 'zh-CN-XiaoxiaoNeural')
     speed = float(tts_pref.get('speed', 1.0))
 
-    # 先查缓存
+    # 缓存命中 → 即时返回
     audio = await get_cached_tts(question.question_text, voice, speed)
-    if audio is None:
-        # 缓存未命中，实时生成
-        try:
-            audio = await synthesize_speech(question.question_text, voice, speed)
-            if audio and len(audio) > 220:
-                from app.services.audio_cache import save_tts_cache
-                await save_tts_cache(question.question_text, voice, speed, audio)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"TTS generation failed: {e}")
+    if audio is not None:
+        return Response(content=audio, media_type="audio/mpeg")
 
-    if not audio:
-        raise HTTPException(status_code=404, detail="Audio not available")
+    # 缓存未命中 → 后台异步生成，立即返回 202 让前端轮询
+    cache_key = tts_cache_key(question.question_text, voice, speed)
+    if cache_key not in _pending_tts:
+        _pending_tts.add(cache_key)
 
-    return Response(content=audio, media_type="audio/mpeg")
+        async def _gen_and_cache():
+            try:
+                audio_bytes = await synthesize_speech(question.question_text, voice, speed)
+                if audio_bytes and len(audio_bytes) > 220:
+                    await save_tts_cache(question.question_text, voice, speed, audio_bytes)
+                    # 更新 DB 路径
+                    async with async_session_factory() as s:
+                        await s.execute(
+                            update(InterviewQuestion)
+                            .where(InterviewQuestion.id == question.id)
+                            .values(tts_audio_path=f"tts_cache/{cache_key}.mp3")
+                        )
+                        await s.commit()
+            except Exception as e:
+                print(f"[TTS bg] Failed for Q{question.id}: {e}")
+            finally:
+                _pending_tts.discard(cache_key)
+
+        asyncio.create_task(_gen_and_cache())
+
+    return Response(
+        content=b"",
+        status_code=202,
+        headers={"Retry-After": "1", "X-TTS-Status": "generating"},
+    )
 
 
 @router.post("/{interview_id}/question/{order_index}/favorite")
