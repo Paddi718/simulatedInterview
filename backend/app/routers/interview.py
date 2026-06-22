@@ -239,35 +239,78 @@ async def create_interview(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    try:
-        resume_id = uuid.UUID(data.resume_id)
-        jd_id = uuid.UUID(data.jd_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid resume_id or jd_id format")
+    category = data.category or "private_enterprise"
 
-    resume_result = await db.execute(
-        select(Resume).where(Resume.id == resume_id, Resume.user_id == current_user.id)
-    )
-    resume = resume_result.scalar_one_or_none()
-    if not resume:
-        raise HTTPException(status_code=404, detail="Resume not found")
+    # ── 按类别条件加载简历/JD ──
+    resume_id = None; resume_data = {}
+    jd_id = None; jd_data = {}
 
-    jd_result = await db.execute(
-        select(JobDescription).where(JobDescription.id == jd_id, JobDescription.user_id == current_user.id)
-    )
-    jd = jd_result.scalar_one_or_none()
-    if not jd:
-        raise HTTPException(status_code=404, detail="Job description not found")
+    if category == "private_enterprise":
+        # 私企：简历和 JD 必选
+        if not data.resume_id or not data.jd_id:
+            raise HTTPException(status_code=400, detail="私企面试需要选择简历和岗位")
+        try:
+            resume_id = uuid.UUID(data.resume_id)
+            jd_id = uuid.UUID(data.jd_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid resume_id or jd_id format")
 
+        resume = (await db.execute(
+            select(Resume).where(Resume.id == resume_id, Resume.user_id == current_user.id)
+        )).scalar_one_or_none()
+        if not resume:
+            raise HTTPException(status_code=404, detail="Resume not found")
+        resume_data = resume.parsed_data or {}
+
+        jd = (await db.execute(
+            select(JobDescription).where(JobDescription.id == jd_id, JobDescription.user_id == current_user.id)
+        )).scalar_one_or_none()
+        if not jd:
+            raise HTTPException(status_code=404, detail="Job description not found")
+        jd_data = jd.parsed_data or {}
+
+    elif category == "institution" and data.resume_id:
+        # 事业单位：简历可选
+        try:
+            resume_id = uuid.UUID(data.resume_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid resume_id format")
+        resume = (await db.execute(
+            select(Resume).where(Resume.id == resume_id, Resume.user_id == current_user.id)
+        )).scalar_one_or_none()
+        if resume:
+            resume_data = resume.parsed_data or {}
+
+    elif category == "institution" and data.jd_id:
+        # 事业单位：JD 可选
+        try:
+            jd_id = uuid.UUID(data.jd_id)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid jd_id format")
+        jd = (await db.execute(
+            select(JobDescription).where(JobDescription.id == jd_id, JobDescription.user_id == current_user.id)
+        )).scalar_one_or_none()
+        if jd:
+            jd_data = jd.parsed_data or {}
+
+    # ── 验证 category_config ──
+    if category in ("civil_service", "institution"):
+        if not data.category_config.get("province"):
+            raise HTTPException(status_code=400, detail="请选择面试省份")
+
+    # ── 创建面试 ──
     try:
         interview = await InterviewEngine.create_interview(
             db=db,
             user_id=current_user.id,
-            resume_id=resume.id,
-            jd_id=jd.id,
-            resume_data=resume.parsed_data or {},
-            jd_data=jd.parsed_data or {},
+            resume_id=resume_id,
+            jd_id=jd_id,
+            resume_data=resume_data,
+            jd_data=jd_data,
             difficulty=data.difficulty,
+            category=category,
+            category_config=data.category_config,
+            question_count=data.question_count,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate interview: {str(e)}")
@@ -991,6 +1034,8 @@ async def _interview_to_response(interview: Interview, db: AsyncSession) -> Inte
     ]
     return InterviewResponse(
         id=str(interview.id),
+        category=interview.interview_category,
+        category_config=interview.category_config,
         status=interview.status,
         difficulty=interview.difficulty,
         total_score=interview.total_score,

@@ -24,6 +24,9 @@ class InterviewEngine:
         resume_data: dict,
         jd_data: dict,
         difficulty: str = "mid",
+        category: str = "private_enterprise",
+        category_config: dict | None = None,
+        question_count: int | None = None,
     ) -> Interview:
         # 查找用户 LLM 配置
         from app.models.user import User
@@ -32,16 +35,49 @@ class InterviewEngine:
         user_db = u_result.scalar_one_or_none()
         llm_key, llm_base, llm_model = extract_llm_config(user_db.llm_config if user_db else None)
 
-        # 生成面试题
-        questions_data = await generate_questions(resume_data, jd_data, difficulty,
-            api_key=llm_key, api_base=llm_base, model=llm_model)
+        cfg = category_config or {}
+
+        # 按类别生成面试题
+        if category == "civil_service":
+            from app.services.question_generator import generate_questions_civil_service
+            default_count = 3
+            count = question_count or default_count
+            questions_data = await generate_questions_civil_service(
+                province=cfg.get("province", ""),
+                position_category=cfg.get("position_category", "综合管理"),
+                level=cfg.get("level", "省"),
+                position_name=cfg.get("position_name", ""),
+                total_count=count,
+                api_key=llm_key, api_base=llm_base, model=llm_model,
+            )
+        elif category == "institution":
+            from app.services.question_generator import generate_questions_institution
+            default_count = 5
+            count = question_count or default_count
+            questions_data = await generate_questions_institution(
+                province=cfg.get("province", ""),
+                position_category=cfg.get("position_category", "综合管理"),
+                level=cfg.get("level", "省"),
+                position_name=cfg.get("position_name", ""),
+                resume_data=resume_data if resume_data else None,
+                jd_data=jd_data if jd_data else None,
+                total_count=count,
+                api_key=llm_key, api_base=llm_base, model=llm_model,
+            )
+        else:
+            # private_enterprise — 现有逻辑不变
+            questions_data = await generate_questions(resume_data, jd_data, difficulty,
+                api_key=llm_key, api_base=llm_base, model=llm_model)
 
         # 创建面试会话
         interview = Interview(
             user_id=user_id,
-            resume_id=resume_id,
-            jd_id=jd_id,
-            difficulty=difficulty,
+            resume_id=resume_id if resume_id else None,
+            jd_id=jd_id if jd_id else None,
+            difficulty=difficulty if category != "civil_service" else "mid",
+            interview_category=category,
+            category_config=cfg,
+            question_count=question_count,
             status="preparing",
         )
         db.add(interview)

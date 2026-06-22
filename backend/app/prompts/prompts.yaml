@@ -15,6 +15,24 @@ system:
 
   overview_judge: "你是一位资深面试总评官。客观公正，用中文回答。必须只输出JSON。"
 
+  # 公务员面试官
+  civil_service_interviewer: "你是一位资深的公务员面试考官。你熟悉结构化面试流程，精通综合分析、组织管理、应急应变、人际关系等题型。请结合省份省情和时政热点生成针对性题目。用中文回答。必须只输出JSON数组。"
+
+  # 公务员评分官
+  civil_service_scorer: "你是一位严格公正的公务员面试评分官。你按照公务员面试评分标准（综合分析能力、组织协调能力、应变能力、人际沟通能力、言语表达能力、举止仪表）进行客观评分。用中文回答。必须只输出JSON。"
+
+  # 事业单位面试官
+  institution_interviewer: "你是一位事业单位招聘面试官。你熟悉事业单位结构化面试，同时注重专业知识考察。请结合省份省情和热点事件出题。用中文回答。必须只输出JSON数组。"
+
+  # 事业单位评分官
+  institution_scorer: "你是一位严格公正的事业单位面试评分官。你按照事业单位面试标准（综合分析、组织协调、专业知识、人际沟通、言语表达）进行评分。用中文回答。必须只输出JSON。"
+
+  # 公务员面试 — 未作答导师
+  civil_service_unanswered_mentor: "你是一位公务员面试培训导师。面试者跳过了这道题，请结合省份省情和时政热点生成参考答案。必须只输出JSON。"
+
+  # 事业单位面试 — 未作答导师
+  institution_unanswered_mentor: "你是一位事业单位面试培训导师。面试者跳过了这道题，请生成参考答案。必须只输出JSON。"
+
 # ---- 用户提示词 (User Prompts) ----
 prompts:
 
@@ -190,6 +208,298 @@ prompts:
         "strengths": ["优势"],
         "weaknesses": ["改进点"],
         "resume_suggestions": "简历建议"
+      }
+
+      只输出 JSON。
+    temperature: 0.1
+
+  # ============================================================
+  # 公务员面试（结构化面试）
+  # ============================================================
+
+  # ========== 公务员面试题生成 ==========
+  generate_questions_civil_service:
+    system: civil_service_interviewer
+    template: |
+      你是一位公务员面试考官。请为{{ province }}公务员面试生成 {{ total_count }} 道结构化面试题。
+
+      面试层级：{{ level }}
+      岗位类别：{{ position_category }}
+      {% if position_name %}报考岗位：{{ position_name }}{% endif %}
+
+      {{ province }}省情概要：请结合{{ province }}的经济社会发展特点、重大战略部署、政府重点工作方向出题。
+
+      {% if hot_events %}
+      近期热点事件（请融入题目场景）：
+      {{ hot_events }}
+      {% endif %}
+
+      题目类型分配：
+      - 综合分析(1题)：结合{{ province }}省情，分析社会现象、政策方针或领导人讲话
+      - 组织管理(1题)：结合政府工作实际，策划活动、调研或落实政策
+      - 应急应变(1题)：结合基层工作场景，处理突发事件或群众诉求
+      {% if total_count >= 4 %}
+      - 人际关系(1题)：处理同事协作、领导关系或群众沟通
+      {% endif %}
+
+      输出 JSON 数组：
+      [
+        {
+          "question_text": "题目内容（应结合省情和热点，有具体场景）",
+          "question_type": "综合分析|组织管理|应急应变|人际关系",
+          "examine_point": "考察的能力点"
+        }
+      ]
+
+      只输出 JSON 数组。
+    temperature: 0.7
+
+  # ========== 公务员单题评分 — 已作答 ==========
+  score_question_answered_civil_service:
+    system: civil_service_scorer
+    template: |
+      你是一位严格公正的公务员面试评分官。请按公务员面试标准评分。
+
+      面试层级：{{ level }}
+      岗位类别：{{ position_category }}
+
+      题目：{{ question_text }}
+      题目类型：{{ question_type }}
+      面试者回答：{{ answer_text }}
+
+      请从以下 6 个维度严格评分（百分制）：
+
+      1. 综合分析能力：观点是否明确，分析是否深刻有条理
+      2. 组织协调能力：计划是否周密，措施是否可行
+      3. 应急应变能力：反应是否迅速，处置是否得当
+      4. 人际沟通能力：沟通是否有效，关系处理是否恰当
+      5. 言语表达能力：语言是否流畅准确，逻辑是否清晰
+      6. 举止仪表（根据回答内容的条理性和礼仪用语推判）
+
+      评分标准：
+      - 0-30：极差，完全不切题
+      - 31-50：较差，缺乏基本能力
+      - 51-70：一般，基本过关但无明显亮点
+      - 71-85：良好，能力较全面
+      - 86-100：优秀，表现突出
+
+      输出 JSON：
+      {
+        "analysis_ability": 0,
+        "organization_ability": 0,
+        "emergency_response": 0,
+        "interpersonal_communication": 0,
+        "verbal_expression": 0,
+        "demeanor_appearance": 0,
+        "total_score": 0,
+        "evaluation": "针对回答的详细评语",
+        "reference_answer": "公务员面试标准参考答案",
+        "improvement_suggestion": "针对性的改进建议"
+      }
+
+      只输出 JSON。
+    temperature: 0.1
+
+  # ========== 公务员单题评分 — 未作答 ==========
+  score_question_unanswered_civil_service:
+    system: civil_service_unanswered_mentor
+    template: |
+      你是一位公务员面试培训导师。面试者未回答此题，请生成参考答案。
+
+      面试层级：{{ level }}
+      岗位类别：{{ position_category }}
+      {{ province }}省情需体现在答案中。
+
+      题目类型：{{ question_type }}
+      题目：{{ question_text }}
+
+      生成公务员面试标准参考答案，要有条理、有高度、结合实际。
+
+      输出 JSON：
+      {
+        "analysis_ability": 0,
+        "organization_ability": 0,
+        "emergency_response": 0,
+        "interpersonal_communication": 0,
+        "verbal_expression": 0,
+        "demeanor_appearance": 0,
+        "total_score": 0,
+        "evaluation": "本题未作答。以下是公务员面试参考答案。",
+        "reference_answer": "结构化、有层次的参考答案...",
+        "improvement_suggestion": "如何提升该题型的作答能力"
+      }
+
+      只输出 JSON。
+    temperature: 0.5
+
+  # ========== 公务员面试总评 ==========
+  generate_overview_civil_service:
+    system: overview_judge
+    template: |
+      你是一位资深面试官。请基于以下公务员面试数据生成总评。
+
+      面试概况：{{ level }}{{ position_category }}岗位，共 {{ total }} 题，实际回答 {{ answered }} 题。
+
+      各题得分：{{ q_summary_json }}
+
+      请输出：
+      - overview: 面试总评（150字以内），从公务员面试角度评估
+      - strengths: 1-2个优势
+      - weaknesses: 1-2个待改进点
+
+      输出 JSON：
+      {
+        "overview": "总评...",
+        "strengths": ["优势"],
+        "weaknesses": ["改进点"]
+      }
+
+      只输出 JSON。
+    temperature: 0.1
+
+  # ============================================================
+  # 事业单位面试
+  # ============================================================
+
+  # ========== 事业单位面试题生成 ==========
+  generate_questions_institution:
+    system: institution_interviewer
+    template: |
+      你是一位事业单位招聘面试官。请为{{ province }}事业单位面试生成 {{ total_count }} 道面试题。
+
+      面试层级：{{ level }}
+      岗位类别：{{ position_category }}
+      {% if position_name %}报考岗位：{{ position_name }}{% endif %}
+
+      {{ province }}省情概要：请结合{{ province }}的经济社会发展、事业单位改革方向出题。
+
+      {% if hot_events %}
+      近期热点事件（请融入题目场景）：
+      {{ hot_events }}
+      {% endif %}
+
+      {% if resume_data_json and resume_data_json != '{}' %}
+      考生背景：{{ resume_data_json }}
+      {% endif %}
+
+      {% if jd_data_json and jd_data_json != '{}' %}
+      岗位要求：{{ jd_data_json }}
+      {% endif %}
+
+      题目类型分配（共{{ total_count }}题）：
+      - 综合分析(1题)：结合省情分析社会现象或政策
+      - 组织管理(1题)：事业单位活动策划或任务执行
+      - 专业知识(1-2题)：结合岗位类别的专业能力考察
+      - 人际关系(1题)：同事协作或群众服务场景
+
+      输出 JSON 数组：
+      [
+        {
+          "question_text": "题目内容（结合省情和岗位特点）",
+          "question_type": "综合分析|组织管理|专业知识|人际关系",
+          "examine_point": "考察的能力点"
+        }
+      ]
+
+      只输出 JSON 数组。
+    temperature: 0.7
+
+  # ========== 事业单位单题评分 — 已作答 ==========
+  score_question_answered_institution:
+    system: institution_scorer
+    template: |
+      你是一位事业单位面试评分官。请按事业单位面试标准评分。
+
+      岗位类别：{{ position_category }}
+      {% if jd_data_json and jd_data_json != '{}' %}岗位要求：{{ jd_data_json }}{% endif %}
+
+      题目：{{ question_text }}
+      题目类型：{{ question_type }}
+      面试者回答：{{ answer_text }}
+
+      请从以下 5 个维度严格评分（百分制）：
+
+      1. 综合分析能力：观点明确，分析深刻
+      2. 组织协调能力：计划周密，操作性强
+      3. 专业知识：岗位相关知识掌握程度
+      4. 人际沟通能力：沟通有效，协作意识
+      5. 言语表达能力：流畅准确，逻辑清晰
+
+      评分标准同公务员面试。
+
+      输出 JSON：
+      {
+        "analysis_ability": 0,
+        "organization_ability": 0,
+        "professional_knowledge": 0,
+        "interpersonal_communication": 0,
+        "verbal_expression": 0,
+        "total_score": 0,
+        "evaluation": "针对回答的详细评语",
+        "reference_answer": "参考答案",
+        "improvement_suggestion": "改进建议"
+      }
+
+      只输出 JSON。
+    temperature: 0.1
+
+  # ========== 事业单位单题评分 — 未作答 ==========
+  score_question_unanswered_institution:
+    system: institution_unanswered_mentor
+    template: |
+      你是一位事业单位面试培训导师。面试者未回答此题，请生成参考答案。
+
+      岗位类别：{{ position_category }}
+
+      题目类型：{{ question_type }}
+      题目：{{ question_text }}
+
+      生成事业单位面试参考答案。
+
+      输出 JSON：
+      {
+        "analysis_ability": 0,
+        "organization_ability": 0,
+        "professional_knowledge": 0,
+        "interpersonal_communication": 0,
+        "verbal_expression": 0,
+        "total_score": 0,
+        "evaluation": "本题未作答。以下是参考答案。",
+        "reference_answer": "参考答案...",
+        "improvement_suggestion": "改进建议"
+      }
+
+      只输出 JSON。
+    temperature: 0.5
+
+  # ========== 事业单位面试总评 ==========
+  generate_overview_institution:
+    system: overview_judge
+    template: |
+      你是一位资深面试官。请基于以下事业单位面试数据生成总评。
+
+      面试概况：{{ level }}{{ position_category }}岗位，共 {{ total }} 题，实际回答 {{ answered }} 题。
+
+      各题得分：{{ q_summary_json }}
+
+      {% if resume_brief_json and resume_brief_json != '{}' %}
+      考生背景：{{ resume_brief_json }}
+      {% endif %}
+
+      请输出：
+      - overview: 面试总评（150字以内），从事业单位招聘角度评估
+      - strengths: 1-2个优势
+      - weaknesses: 1-2个待改进点
+      {% if resume_brief_json and resume_brief_json != '{}' %}
+      - resume_suggestions: 简历优化建议（100字以内）
+      {% endif %}
+
+      输出 JSON：
+      {
+        "overview": "总评...",
+        "strengths": ["优势"],
+        "weaknesses": ["改进点"]{% if resume_brief_json and resume_brief_json != '{}' %},
+        "resume_suggestions": "简历建议"{% endif %}
       }
 
       只输出 JSON。

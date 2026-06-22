@@ -19,6 +19,9 @@ class Settings(BaseSettings):
 
     # TTS (Edge TTS — free, no API key required)
 
+    # Bing Search (用于公务员/事业单位面试热点搜索，可选)
+    bing_search_api_key: str = ""
+
     # LLM
     llm_api_key: str = ""
     llm_api_base: str = "https://api.deepseek.com/v1"

@@ -13,6 +13,12 @@ class Interview(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     resume_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("resumes.id"), nullable=True)
     jd_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("job_descriptions.id"), nullable=True)
+    interview_category: Mapped[str] = mapped_column(String(30), default="private_enterprise")
+    # private_enterprise | civil_service | institution
+    category_config: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=None)
+    # {province, position_category, level, position_name, hot_events, ...}
+    question_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # 题目数量（null 时使用类别默认值）
     difficulty: Mapped[str] = mapped_column(String(10), default="mid")
     total_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     dimension_scores: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=None)

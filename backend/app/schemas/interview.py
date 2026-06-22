@@ -3,9 +3,12 @@ from typing import Optional
 
 
 class CreateInterviewRequest(BaseModel):
-    resume_id: str
-    jd_id: str
+    category: str = "private_enterprise"  # private_enterprise | civil_service | institution
+    resume_id: Optional[str] = None
+    jd_id: Optional[str] = None
     difficulty: str = "mid"
+    category_config: dict = {}  # {province, position_category, level, position_name}
+    question_count: Optional[int] = None
 
 
 class QuestionItem(BaseModel):
@@ -26,6 +29,8 @@ class QuestionItem(BaseModel):
 
 class InterviewResponse(BaseModel):
     id: str
+    category: str = "private_enterprise"
+    category_config: Optional[dict] = None
     status: str
     difficulty: str
     total_score: Optional[int] = None

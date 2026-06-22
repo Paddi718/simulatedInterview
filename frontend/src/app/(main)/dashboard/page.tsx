@@ -24,7 +24,15 @@ interface Interview {
   status?: string;
   position?: string;
   company?: string;
+  category?: string;
+  category_config?: Record<string, any>;
 }
+
+const CATEGORY_LABELS: Record<string, string> = {
+  private_enterprise: '私企',
+  civil_service: '公务员',
+  institution: '事业单位',
+};
 
 interface User {
   id: string;
@@ -247,9 +255,15 @@ export default function DashboardPage() {
                     <div className={`w-2 h-2 rounded-full shrink-0 ${interview.status === 'completed' ? 'bg-green-400' : 'bg-amber-400'}`} />
                     <div>
                       <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                        {interview.position || (interview.difficulty
-                          ? `${interview.difficulty === 'easy' ? '初级' : interview.difficulty === 'hard' ? '高级' : '中级'} 面试`
-                          : '模拟面试')}
+                        {interview.position || (
+                          interview.category === 'civil_service'
+                            ? `${interview.category_config?.province || ''}公务员面试`
+                            : interview.category === 'institution'
+                            ? `${interview.category_config?.province || ''}事业单位面试`
+                            : (interview.difficulty
+                              ? `${interview.difficulty === 'easy' ? '初级' : interview.difficulty === 'hard' ? '高级' : '中级'} 面试`
+                              : '模拟面试')
+                        )}
                         {interview.company && <span className="text-gray-400 font-normal ml-1.5">@{interview.company}</span>}
                       </p>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">

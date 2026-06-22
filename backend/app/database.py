@@ -44,6 +44,9 @@ async def init_db():
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS llm_config JSONB",
             "ALTER TABLE interview_questions ADD COLUMN IF NOT EXISTS is_favorited BOOLEAN DEFAULT false",
             "ALTER TABLE interview_questions ADD COLUMN IF NOT EXISTS tts_audio_path TEXT",
+            "ALTER TABLE interviews ADD COLUMN IF NOT EXISTS interview_category VARCHAR(30) DEFAULT 'private_enterprise'",
+            "ALTER TABLE interviews ADD COLUMN IF NOT EXISTS category_config JSONB",
+            "ALTER TABLE interviews ADD COLUMN IF NOT EXISTS question_count INTEGER",
         ]:
             try:
                 await conn.execute(text(stmt))

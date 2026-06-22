@@ -98,6 +98,10 @@ async def run_scoring_pipeline(interview_id: uuid.UUID):
             user_db = u_result.scalar_one_or_none()
             llm_key, llm_base, llm_llm_model = extract_llm_config(user_db.llm_config if user_db else None)
 
+            # 获取面试类别信息
+            cat = getattr(interview, 'interview_category', 'private_enterprise') or 'private_enterprise'
+            cat_cfg = getattr(interview, 'category_config', None) or {}
+
             total_q = len(questions)
             print(f"[Orchestrator] Starting scoring for interview {interview_id}, {total_q} questions")
 
@@ -114,7 +118,8 @@ async def run_scoring_pipeline(interview_id: uuid.UUID):
                     return question, None  # 已评分，跳过
                 try:
                     scores = await score_question(question, resume_data, jd_data,
-                        api_key=llm_key, api_base=llm_base, model=llm_llm_model)
+                        api_key=llm_key, api_base=llm_base, model=llm_llm_model,
+                        category=cat, category_config=cat_cfg)
                     return question, scores
                 except Exception as e:
                     print(f"[Orchestrator] Q{question.order_index} scoring failed: {e}")
@@ -197,7 +202,8 @@ async def run_scoring_pipeline(interview_id: uuid.UUID):
                 from app.services.scoring_service import generate_interview_overview
                 overview = await asyncio.wait_for(
                     generate_interview_overview(interview, questions, resume_data, jd_data,
-                        api_key=llm_key, api_base=llm_base, model=llm_llm_model),
+                        api_key=llm_key, api_base=llm_base, model=llm_llm_model,
+                        category=cat, category_config=cat_cfg),
                     timeout=60.0
                 )
                 interview.ai_overview = overview.get("overview", "")

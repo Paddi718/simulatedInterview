@@ -128,9 +128,14 @@ async def _score_single_question(db, interview_id: uuid.UUID, order_index: int) 
         user_db = u_result.scalar_one_or_none()
         llm_key, llm_base, llm_model = extract_llm_config(user_db.llm_config if user_db else None)
 
+    # 获取面试类别
+    iv_cat = getattr(interview, 'interview_category', 'private_enterprise') or 'private_enterprise'
+    iv_cat_cfg = getattr(interview, 'category_config', None) or {}
+
     from app.services.scoring_service import score_question
     scores = await score_question(question, resume_data, jd_data,
-        api_key=llm_key, api_base=llm_base, model=llm_model)
+        api_key=llm_key, api_base=llm_base, model=llm_model,
+        category=iv_cat, category_config=iv_cat_cfg)
 
     question.ai_score = scores.get("total_score", 0)
     question.score_detail = {k: v for k, v in scores.items()
