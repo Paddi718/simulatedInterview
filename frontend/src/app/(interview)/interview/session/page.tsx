@@ -255,6 +255,12 @@ function SessionContent() {
   },[interviewId,router]);
   useEffect(()=>{loadInterview();connectWs();return ()=>{if(wsTimerRef.current)clearTimeout(wsTimerRef.current);};},[loadInterview,connectWs]);
 
+  // 总耗时计时器：从进入面试页面到离开，全程计时
+  useEffect(()=>{
+    const totalTimer=setInterval(()=>{totalTimeRef.current+=1;},1000);
+    return ()=>{clearInterval(totalTimer);};
+  },[]);
+
   // 挂载时置位 mountedRef，卸载时清理所有资源
   // 注意：必须在挂载主体里重置 mountedRef=true，否则 StrictMode 双重挂载会导致它永久为 false
   useEffect(() => {
@@ -297,15 +303,28 @@ function SessionContent() {
 
   useEffect(()=>{stopTts();setAudioLoading(false);try{(window as any).speechSynthesis?.cancel();}catch{}setHasAutoRead(false);},[currentIndex,stopTts]);
 
-  /* ---------- Thinking timer ---------- */
-  // 兜底：如果 moveToNextOrComplete 已启动计时器则跳过，否则在此启动
+  // 切题时重置思考计数器
   useEffect(()=>{
-    if(phase!=='question'||!questions[currentIndex])return;
-    if(thinkingRef.current)return; // 已在 moveToNextOrComplete 中启动
     thinkingValueRef.current=0;setThinkingTime(0);setFinalThinkingTime(0);
+  },[currentIndex]);
+
+  /* ---------- Thinking timer (pauses during TTS playback) ---------- */
+  useEffect(()=>{
+    if(phase!=='question'||!questions[currentIndex]){
+      if(thinkingRef.current){clearInterval(thinkingRef.current);thinkingRef.current=null;}
+      return;
+    }
+    // TTS 播放期间暂停思考计时
+    if(ttsPlaying||audioLoading){
+      if(thinkingRef.current){clearInterval(thinkingRef.current);thinkingRef.current=null;}
+      return;
+    }
+    // 已在运行则跳过
+    if(thinkingRef.current)return;
+
     thinkingRef.current=setInterval(()=>{const v=thinkingValueRef.current+1;thinkingValueRef.current=v;setThinkingTime(v);},1000);
     return ()=>{if(thinkingRef.current){clearInterval(thinkingRef.current);thinkingRef.current=null;}};
-  },[phase,currentIndex,questions]);
+  },[phase,currentIndex,questions,ttsPlaying,audioLoading]);
 
   /* ---------- Recording ---------- */
   const startRecording=useCallback(async()=>{
@@ -377,7 +396,7 @@ function SessionContent() {
 
   const processAudio=async()=>{
     if(timerRef.current){clearInterval(timerRef.current);timerRef.current=null;}
-    const time=timerValueRef.current;setRecordedTime(time);totalTimeRef.current+=time;timerValueRef.current=0;
+    const time=timerValueRef.current;setRecordedTime(time);timerValueRef.current=0;
     // 在 SR 完全停止后，捕获最终的浏览器转写文本
     const browserText=liveTextRef.current;
     setTranscript(browserText);
@@ -446,10 +465,7 @@ function SessionContent() {
     }
     if(next < questions.length){
       setCurrentIndex(next);setPhase('question');setTranscript('');setLiveText('');setTimer(0);setRecordedTime(0);setFeedback(null);
-      // 立即启动思考计时器，避免 useEffect 延迟导致的闪烁
-      if(thinkingRef.current){clearInterval(thinkingRef.current);}
-      thinkingValueRef.current=0;setThinkingTime(0);setFinalThinkingTime(0);
-      thinkingRef.current=setInterval(()=>{const v=thinkingValueRef.current+1;thinkingValueRef.current=v;setThinkingTime(v);},1000);
+      // 思考计时器由 effect 统一管理，不再手动启动
     }
     else setShowConfirm(true);
   },[currentIndex,questions]);
