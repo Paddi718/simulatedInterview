@@ -292,8 +292,9 @@ function SessionContent() {
                 setQuestions(prev=>{const exists=prev.find(q=>q.order_index===data.index);if(exists)return prev;return[...prev,{order_index:data.index,question_text:data.question.question_text,question_type:data.question.question_type}].sort((a,b)=>a.order_index-b.order_index);});
                 setGenCount(data.index);
                 setGenTotal(data.total);
-                if(data.index===1){
-                  setGenerating(false);setPhase('question');
+                // Q1 到达 → 立即切换到答题模式，但 generating 保持直到全部完成
+                if(data.index===1 && phase==='generating'){
+                  setPhase('question');
                 }
               }else if(data.type==='done'){
                 setGenerating(false);
@@ -563,8 +564,33 @@ function SessionContent() {
     );
   }
 
-  // No questions state
-  if(!currentQ) {
+  // Generating state — AI 出题中，显示动画等待 Q1
+  if(generating && questions.length === 0) {
+    return (
+      <div className="min-h-screen bg-gray-50/50 dark:bg-gray-950 flex items-center justify-center">
+        <div className="text-center max-w-sm mx-4">
+          <div className="relative w-20 h-20 mx-auto mb-6">
+            <div className="absolute inset-0 rounded-full bg-brand-100 dark:bg-brand-950/50 animate-ping opacity-30" />
+            <div className="relative w-20 h-20 rounded-full bg-brand-500 flex items-center justify-center shadow-lg shadow-brand-200 dark:shadow-brand-900">
+              <Loader2 className="w-9 h-9 text-white animate-spin" />
+            </div>
+          </div>
+          <p className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">AI 正在出题</p>
+          <p className="text-sm text-gray-400 dark:text-gray-500 leading-relaxed">
+            正在根据你的要求生成个性化面试题目，请稍候...
+          </p>
+          <div className="mt-6 flex items-center justify-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-brand-400 animate-bounce" style={{animationDelay:'0s'}} />
+            <span className="w-2 h-2 rounded-full bg-brand-400 animate-bounce" style={{animationDelay:'0.15s'}} />
+            <span className="w-2 h-2 rounded-full bg-brand-400 animate-bounce" style={{animationDelay:'0.3s'}} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // No questions — 生成失败或异常
+  if(!currentQ && questions.length === 0 && !generating && !loading) {
     return (
       <div className="min-h-screen bg-gray-50/50 dark:bg-gray-950 flex items-center justify-center">
         <div className="text-center max-w-sm mx-4">
@@ -572,7 +598,7 @@ function SessionContent() {
             <FileText className="w-7 h-7 text-gray-400" />
           </div>
           <p className="text-gray-900 dark:text-gray-100 font-semibold mb-1">暂无题目</p>
-          <p className="text-sm text-gray-400 dark:text-gray-500 mb-6">面试题目尚未生成</p>
+          <p className="text-sm text-gray-400 dark:text-gray-500 mb-6">面试题目生成失败，请返回重试</p>
           <Link href="/dashboard" className="inline-flex items-center gap-2 px-5 py-2.5 bg-brand-500 text-white text-sm font-medium rounded-xl hover:bg-brand-600 transition-all">
             <ChevronLeft className="w-4 h-4" />
             返回首页
