@@ -127,6 +127,8 @@ async def list_interviews(
             "total_score": i.total_score,
             "position": (jd_map.get(str(i.jd_id)).parsed_data or {}).get("position", "") if i.jd_id and str(i.jd_id) in jd_map else "",
             "company": (jd_map.get(str(i.jd_id)).parsed_data or {}).get("company_info", "") if i.jd_id and str(i.jd_id) in jd_map else "",
+            "category": getattr(i, 'interview_category', 'private_enterprise') or 'private_enterprise',
+            "category_config": getattr(i, 'category_config', None) or None,
             "created_at": i.created_at.isoformat(),
         }
         for i in interviews
