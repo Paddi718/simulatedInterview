@@ -209,12 +209,15 @@ async def retry_interview(
     if not original:
         raise HTTPException(status_code=404, detail="Interview not found")
 
-    # 创建新面试记录（复用简历、JD、难度）
+    # 创建新面试记录（复用简历、JD、难度、类别）
     new_interview = Interview(
         user_id=current_user.id,
         resume_id=original.resume_id,
         jd_id=original.jd_id,
         difficulty=original.difficulty,
+        interview_category=getattr(original, 'interview_category', 'private_enterprise') or 'private_enterprise',
+        category_config=getattr(original, 'category_config', None) or None,
+        question_count=getattr(original, 'question_count', None) or None,
         status="preparing",
     )
     db.add(new_interview)
