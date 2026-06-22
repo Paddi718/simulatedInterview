@@ -299,13 +299,35 @@ async def _stream_generate_questions(
                 except asyncio.QueueFull:
                     pass
 
-            # 全部生成完成
+            # 全部生成完成 → 更新状态 + 后台预生成TTS音频
             await db.execute(
                 update(Interview)
                 .where(Interview.id == interview_id)
                 .values(status="preparing")
             )
             await db.commit()
+
+            # 预生成所有题目的 TTS 音频
+            if count > 0:
+                try:
+                    q_result = await db.execute(
+                        select(InterviewQuestion)
+                        .where(InterviewQuestion.interview_id == interview_id)
+                        .order_by(InterviewQuestion.order_index)
+                    )
+                    questions = [(q.id, q.question_text) for q in q_result.scalars().all()]
+                    from app.services.interview_engine import _pre_generate_tts
+                    from app.models.interview import Interview as IvModel
+                    iv_result = await db.execute(select(IvModel).where(IvModel.id == interview_id))
+                    iv = iv_result.scalar_one_or_none()
+                    if iv and questions:
+                        asyncio.create_task(_pre_generate_tts(
+                            user_id=iv.user_id,
+                            interview_id=iv.id,
+                            questions=questions,
+                        ))
+                except Exception as e:
+                    print(f"[StreamGen] TTS pre-gen failed: {e}")
 
     except Exception as e:
         print(f"[StreamGen] Failed for {interview_id}: {e}")
