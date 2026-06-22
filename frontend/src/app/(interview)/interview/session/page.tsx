@@ -556,6 +556,20 @@ function SessionContent() {
   },[currentIndex,questions]);
 
   const handleSkip=useCallback(()=>{if(phase==='scoring'||phase==='submitting')return;if(phase==='recording')stopRecording();setTimeout(()=>submitAnswer('',true),300);},[phase,stopRecording,submitAnswer]);
+  // 最后一题直接完成（跳过回顾阶段，直接弹完成对话框）
+  const finishLast=useCallback(async()=>{
+    if(!interviewId||phase==='submitting')return;
+    const q=questions[currentIndex];if(!q)return;
+    if(phase==='recording')stopRecording();
+    setPhase('submitting');
+    try{
+      await api.post(`/api/interview/${interviewId}/submit-answer`,{
+        order_index:q.order_index, answer_transcript:'', duration_seconds:0, thinking_duration_seconds:finalThinkingTime,
+      });
+      setQuestions(prev=>prev.map((qq,i)=>i===currentIndex?{...qq,user_answer_transcript:''}:qq));
+    }catch{}
+    setShowConfirm(true);
+  },[interviewId,currentIndex,questions,phase,stopRecording]);
   const handleComplete=useCallback(async()=>{if(!interviewId||completing)return;stopTts();stopAll();setAudioLoading(false);setCompleting(true);try{await api.post(`/api/interview/${interviewId}/complete`);router.push(`/interview/result/${interviewId}`);}catch{setCompleting(false);setError('完成失败');}},[interviewId,completing,router]);
 
   /* ---------- Render ---------- */
@@ -774,7 +788,7 @@ function SessionContent() {
                   </button>
                 </div>
                 {isLastQ ? (
-                  <button onClick={()=>submitAnswer('',true)}
+                  <button onClick={finishLast}
                     className="inline-flex items-center gap-1.5 px-6 py-2.5 text-sm font-medium text-brand-500 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/30 border border-brand-200 dark:border-brand-800 rounded-xl hover:bg-brand-100 dark:hover:bg-brand-950/60 transition-all">
                     <Send className="w-4 h-4" />
                     完成面试
@@ -825,7 +839,7 @@ function SessionContent() {
                 </div>
 
                 {isLastQ ? (
-                  <button onClick={()=>{stopRecording();setTimeout(()=>submitAnswer(liveTextRef.current||'',true),300);}}
+                  <button onClick={finishLast}
                     className="inline-flex items-center gap-1.5 px-6 py-2.5 text-sm font-medium text-brand-500 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/30 border border-brand-200 dark:border-brand-800 rounded-xl hover:bg-brand-100 dark:hover:bg-brand-950/60 transition-all">
                     <Send className="w-4 h-4" />
                     提交并完成
