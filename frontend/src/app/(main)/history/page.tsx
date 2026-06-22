@@ -33,7 +33,21 @@ interface InterviewRecord {
   created_at: string;
   position?: string;
   company?: string;
+  category?: string;
+  category_config?: Record<string, any>;
 }
+
+const CATEGORY_LABELS: Record<string, string> = {
+  private_enterprise: '私企',
+  civil_service: '公务员',
+  institution: '事业单位',
+};
+
+const CATEGORY_COLORS: Record<string, string> = {
+  private_enterprise: 'bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400',
+  civil_service: 'bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-400',
+  institution: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400',
+};
 
 type DifficultyFilter = 'all' | 'easy' | 'medium' | 'hard';
 
@@ -352,14 +366,25 @@ function HistoryPageContent() {
 
                   {/* Center content */}
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
-                      {r.position || '模拟面试'}
-                      {r.company && (
-                        <span className="text-gray-400 dark:text-gray-500 font-normal ml-1.5">
-                          @{r.company}
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
+                        {r.position || (r.category === 'civil_service'
+                          ? `${r.category_config?.province || ''}公务员面试`
+                          : r.category === 'institution'
+                            ? `${r.category_config?.province || ''}事业单位面试`
+                            : '模拟面试')}
+                        {r.company && (
+                          <span className="text-gray-400 dark:text-gray-500 font-normal ml-1.5">
+                            @{r.company}
+                          </span>
+                        )}
+                      </p>
+                      {r.category && r.category !== 'private_enterprise' && (
+                        <span className={`inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] font-medium shrink-0 ${CATEGORY_COLORS[r.category] || ''}`}>
+                          {CATEGORY_LABELS[r.category] || r.category}
                         </span>
                       )}
-                    </p>
+                    </div>
                     <div className="flex items-center gap-2 mt-1.5">
                       <span
                         className={cn(

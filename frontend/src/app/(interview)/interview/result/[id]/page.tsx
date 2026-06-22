@@ -71,6 +71,8 @@ export default function ResultPage() {
 
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cancelledRef = useRef(false);
+  const pollStartRef = useRef(0);  // 评分开始时的真实时间戳
+  const [elapsed, setElapsed] = useState(0);  // 实时经过秒数（平滑更新）
 
   // 清理定时器
   const clearPollTimer = useCallback(() => {
@@ -130,6 +132,16 @@ export default function ResultPage() {
       clearPollTimer();
     };
   }, [id]);
+
+  // 平滑的计时器（每秒更新）
+  useEffect(() => {
+    if (!polling) return;
+    pollStartRef.current = Date.now();
+    const ticker = setInterval(() => {
+      setElapsed(Math.round((Date.now() - pollStartRef.current) / 1000));
+    }, 1000);
+    return () => clearInterval(ticker);
+  }, [polling]);
 
   // 轮询逻辑
   const startPolling = useCallback(() => {
@@ -308,9 +320,9 @@ export default function ResultPage() {
                     : '请稍候，结果将自动更新'}
                 </p>
               </div>
-              {pollCount > 0 && (
-                <span className="text-xs text-brand-400 dark:text-brand-500 shrink-0">
-                  {Math.round(pollCount * POLL_INTERVAL / 1000)}s
+              {polling && elapsed > 0 && (
+                <span className="text-xs text-brand-400 dark:text-brand-500 shrink-0 tabular-nums">
+                  {elapsed}s
                 </span>
               )}
             </div>
