@@ -21,6 +21,7 @@ interface QuestionItem {
 }
 interface InterviewResult {
   id: string; status: string; difficulty: string;
+  category?: string; category_config?: Record<string, any>;
   total_score: number | null; dimension_scores: Record<string, number> | null;
   ai_overview: string | null; resume_suggestions: string | null;
   questions: QuestionItem[]; created_at: string;
@@ -270,9 +271,15 @@ export default function ResultPage() {
           <div className="flex flex-col">
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100 tracking-tight">面试报告</h1>
             <div className="flex items-center gap-3 mt-1.5">
-              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-medium border ${DIFFICULTY_CLASS[result.difficulty] || ''}`}>
-                {DIFFICULTY_LABEL[result.difficulty] || result.difficulty}
-              </span>
+              {(result.category === 'civil_service' || result.category === 'institution') ? (
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-medium border bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-400 dark:border-red-800">
+                  {result.category_config?.level || ''}{result.category_config?.level && result.category_config?.position_category ? '·' : ''}{result.category_config?.position_category || ''}
+                </span>
+              ) : (
+                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-medium border ${DIFFICULTY_CLASS[result.difficulty] || ''}`}>
+                  {DIFFICULTY_LABEL[result.difficulty] || result.difficulty}
+                </span>
+              )}
               {result.created_at && (
                 <span className="text-xs text-gray-400 dark:text-gray-500">
                   {new Date(result.created_at).toLocaleDateString('zh-CN')}
