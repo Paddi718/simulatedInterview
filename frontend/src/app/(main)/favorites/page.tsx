@@ -236,11 +236,11 @@ export default function FavoritesPage() {
                                 {q.question_text}
                               </span>
                             </div>
-                            <div className="flex items-center gap-1.5 flex-shrink-0 ml-3">
+                            <div className="flex items-center gap-1.5 flex-shrink-0 ml-3" onClick={(e) => e.stopPropagation()}>
                               {/* Remove favorite button */}
-                              <div className="relative group">
+                              <div className="relative group/rm">
                                 <button
-                                  onClick={(e) => handleRemove(q.id, e)}
+                                  onClick={(e) => { e.stopPropagation(); handleRemove(q.id, e); }}
                                   disabled={removingId === q.id}
                                   className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors disabled:opacity-50"
                                 >
@@ -250,7 +250,7 @@ export default function FavoritesPage() {
                                     <Trash2 className="w-4 h-4" />
                                   )}
                                 </button>
-                                <span className="absolute -bottom-9 left-1/2 -translate-x-1/2 px-2 py-1 text-xs font-medium text-white bg-gray-800 dark:bg-gray-700 rounded-md shadow-sm opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
+                                <span className="absolute -bottom-9 left-1/2 -translate-x-1/2 px-2 py-1 text-xs font-medium text-white bg-gray-800 dark:bg-gray-700 rounded-md shadow-sm opacity-0 group-hover/rm:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
                                   取消收藏
                                 </span>
                               </div>
