@@ -60,6 +60,48 @@ async def llm_chat(
         return resp.json()["choices"][0]["message"]["content"]
 
 
+async def llm_chat_stream(
+    messages: list[dict],
+    temperature: float = 0.7,
+    api_key: Optional[str] = None,
+    api_base: Optional[str] = None,
+    model: Optional[str] = None,
+):
+    """调用 LLM API 流式返回（async generator，逐 chunk yield 文本增量）"""
+    headers = {
+        "Authorization": f"Bearer {api_key or settings.llm_api_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": model or settings.llm_model,
+        "messages": messages,
+        "temperature": temperature,
+        "stream": True,
+    }
+
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        async with client.stream(
+            "POST",
+            f"{api_base or settings.llm_api_base}/chat/completions",
+            headers=headers,
+            json=payload,
+        ) as resp:
+            resp.raise_for_status()
+            async for line in resp.aiter_lines():
+                if line.startswith("data: "):
+                    data = line[6:]
+                    if data == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data)
+                        delta = chunk["choices"][0].get("delta", {})
+                        content = delta.get("content", "")
+                        if content:
+                            yield content
+                    except (json.JSONDecodeError, KeyError, IndexError):
+                        continue
+
+
 async def llm_parse(text: str, api_key: str | None = None, api_base: str | None = None, model: str | None = None) -> dict:
     """LLM 解析简历（提示词从 YAML 加载）"""
     system, prompt, temp = load_prompt("resume_parse", text=text[:15000])

@@ -6,7 +6,7 @@ import os
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import selectinload
 from app.database import get_db, async_session_factory
 from app.models.user import User
@@ -235,6 +235,144 @@ async def retry_interview(
     return {"code": 0, "data": {"id": str(new_interview.id)}, "message": "ok"}
 
 
+# ── 出题流式 SSE 基础设施 ──
+_question_queues: dict[str, asyncio.Queue] = {}
+
+
+def _get_question_queue(interview_id: str) -> asyncio.Queue:
+    if interview_id not in _question_queues:
+        _question_queues[interview_id] = asyncio.Queue()
+    return _question_queues[interview_id]
+
+
+def _cleanup_question_queue(interview_id: str):
+    _question_queues.pop(interview_id, None)
+
+
+async def _stream_generate_questions(
+    interview_id: uuid.UUID,
+    prompt_name: str,
+    prompt_vars: dict,
+    total_count: int,
+    api_key: str | None,
+    api_base: str | None,
+    model: str | None,
+):
+    """后台任务：流式生成题目 → 存入 DB → 推送到 SSE 队列"""
+    from app.services.question_generator import generate_questions_stream
+
+    queue = _get_question_queue(str(interview_id))
+    count = 0
+
+    try:
+        async with async_session_factory() as db:
+            async for q in generate_questions_stream(
+                prompt_name, prompt_vars, total_count,
+                api_key=api_key, api_base=api_base, model=model,
+            ):
+                count += 1
+                question = InterviewQuestion(
+                    interview_id=interview_id,
+                    question_text=q["question_text"],
+                    question_type=q.get("question_type", "behavioral"),
+                    order_index=count,
+                )
+                db.add(question)
+                await db.commit()
+
+                # 推送到 SSE 队列
+                event_data = {
+                    "type": "question",
+                    "index": count,
+                    "total": total_count,
+                    "question": {
+                        "order_index": count,
+                        "question_text": q["question_text"],
+                        "question_type": q.get("question_type", "behavioral"),
+                    },
+                }
+                try:
+                    queue.put_nowait(json.dumps(event_data))
+                except asyncio.QueueFull:
+                    pass
+
+            # 全部生成完成
+            await db.execute(
+                update(Interview)
+                .where(Interview.id == interview_id)
+                .values(status="preparing")
+            )
+            await db.commit()
+
+    except Exception as e:
+        print(f"[StreamGen] Failed for {interview_id}: {e}")
+        # 标记失败
+        try:
+            async with async_session_factory() as db:
+                await db.execute(
+                    update(Interview)
+                    .where(Interview.id == interview_id)
+                    .values(status="generating_failed")
+                )
+                await db.commit()
+        except Exception:
+            pass
+
+    finally:
+        # 发送完成/失败信号
+        try:
+            queue.put_nowait(json.dumps({"type": "done", "total": count}))
+        except asyncio.QueueFull:
+            pass
+
+
+@router.get("/{interview_id}/stream-questions")
+async def stream_questions_sse(
+    interview_id: uuid.UUID,
+    request: Request,
+    token: str = "",
+):
+    """SSE: 实时推送流式生成的面试题"""
+    from jose import JWTError, jwt
+    from app.config import get_settings
+    settings = get_settings()
+    if not token:
+        token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    if not token:
+        return Response(status_code=401)
+    try:
+        jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+    except JWTError:
+        return Response(status_code=401)
+
+    sid = str(interview_id)
+    queue = _get_question_queue(sid)
+
+    async def event_generator():
+        try:
+            while True:
+                try:
+                    data = await asyncio.wait_for(queue.get(), timeout=30)
+                    yield f"data: {data}\n\n"
+                    parsed = json.loads(data)
+                    if parsed.get("type") in ("done", "error"):
+                        break
+                except asyncio.TimeoutError:
+                    yield f"data: {json.dumps({'type': 'heartbeat'})}\n\n"
+        except asyncio.CancelledError:
+            pass
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @router.post("/create", response_model=InterviewResponse, status_code=201)
 async def create_interview(
     data: CreateInterviewRequest,
@@ -300,22 +438,79 @@ async def create_interview(
         if not data.category_config.get("province"):
             raise HTTPException(status_code=400, detail="请选择面试省份")
 
-    # ── 创建面试 ──
-    try:
-        interview = await InterviewEngine.create_interview(
-            db=db,
-            user_id=current_user.id,
-            resume_id=resume_id,
-            jd_id=jd_id,
-            resume_data=resume_data,
-            jd_data=jd_data,
-            difficulty=data.difficulty,
-            category=category,
-            category_config=data.category_config,
-            question_count=data.question_count,
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate interview: {str(e)}")
+    # ── 查找用户 LLM 配置 ──
+    from app.models.user import User as UserModel
+    from app.services.llm_client import extract_llm_config
+    u_result = await db.execute(select(UserModel).where(UserModel.id == current_user.id))
+    user_db = u_result.scalar_one_or_none()
+    llm_key, llm_base, llm_model = extract_llm_config(user_db.llm_config if user_db else None)
+
+    # ── 构建提示词变量 ──
+    cfg = data.category_config or {}
+    default_count = {"civil_service": 3, "institution": 5}.get(category, 10)
+    total_count = data.question_count or default_count
+
+    if category == "civil_service":
+        # 预搜索热点（异步但不阻塞返回）
+        from app.services.question_generator import _search_hot_events
+        hot_events = await _search_hot_events(cfg.get("province", ""))
+        prompt_name = "generate_questions_civil_service"
+        prompt_vars = {
+            "province": cfg.get("province", ""),
+            "position_category": cfg.get("position_category", "综合管理"),
+            "level": cfg.get("level", "省"),
+            "position_name": cfg.get("position_name", ""),
+            "hot_events": hot_events,
+            "total_count": total_count,
+        }
+    elif category == "institution":
+        from app.services.question_generator import _search_hot_events
+        hot_events = await _search_hot_events(cfg.get("province", ""))
+        prompt_name = "generate_questions_institution"
+        prompt_vars = {
+            "province": cfg.get("province", ""),
+            "position_category": cfg.get("position_category", "综合管理"),
+            "level": cfg.get("level", ""),
+            "position_name": cfg.get("position_name", ""),
+            "hot_events": hot_events,
+            "resume_data_json": resume_data or {},
+            "jd_data_json": jd_data or {},
+            "total_count": total_count,
+        }
+    else:
+        prompt_name = "generate_questions"
+        prompt_vars = {
+            "total_count": total_count,
+            "difficulty": data.difficulty,
+            "resume_data_json": resume_data,
+            "jd_data_json": jd_data,
+        }
+
+    # ── 立即创建空面试骨架 ──
+    interview = Interview(
+        user_id=current_user.id,
+        resume_id=resume_id,
+        jd_id=jd_id,
+        difficulty=data.difficulty if category != "civil_service" else "mid",
+        interview_category=category,
+        category_config=cfg,
+        question_count=data.question_count,
+        status="generating",  # 流式生成中
+    )
+    db.add(interview)
+    await db.commit()
+    await db.refresh(interview)
+
+    # ── 后台任务：流式生成题目 ──
+    asyncio.create_task(_stream_generate_questions(
+        interview_id=interview.id,
+        prompt_name=prompt_name,
+        prompt_vars=prompt_vars,
+        total_count=total_count,
+        api_key=llm_key,
+        api_base=llm_base,
+        model=llm_model,
+    ))
 
     return await _interview_to_response(interview, db)
 

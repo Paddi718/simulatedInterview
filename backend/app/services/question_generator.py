@@ -32,7 +32,67 @@ def _parse_questions(result: str, total_count: int) -> list[dict]:
 
     if isinstance(questions, list):
         return questions[:total_count]
-    return []
+
+
+async def stream_questions(chunks, total_count: int):
+    """流式解析 LLM 输出的 JSON 数组，逐题 yield。
+
+    状态机：追踪大括号嵌套深度，在 depth 归零时提取完整 JSON 对象。
+    兼容 LLM 输出中的 markdown fences 和文本前缀。
+    """
+    buffer = ""
+    emitted = 0  # 已 yield 的题目数
+    objects = []  # 累积解析出的题目对象
+
+    async for chunk_text in chunks:
+        buffer += chunk_text
+        # 只在 buffer 足够大时才尝试解析（避免逐字符扫描开销）
+        if len(buffer) < 50:
+            continue
+
+        # 状态机扫描：找到所有完整的 { ... } 对象
+        depth = 0
+        in_string = False
+        escape = False
+        obj_start = -1
+
+        for i, ch in enumerate(buffer):
+            if escape:
+                escape = False
+                continue
+            if ch == '\\':
+                escape = True
+                continue
+            if ch == '"':
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if ch == '{':
+                if depth == 0:
+                    obj_start = i
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0 and obj_start >= 0:
+                    candidate = buffer[obj_start:i + 1]
+                    try:
+                        obj = json.loads(candidate)
+                        if isinstance(obj, dict) and "question_text" in obj:
+                            # 去重（相同 question_text 视为同一题）
+                            existing = {o.get("question_text", "") for o in objects}
+                            if obj.get("question_text", "") not in existing:
+                                objects.append(obj)
+                    except json.JSONDecodeError:
+                        pass  # 不是合法 JSON 的 {...} 跳过
+
+        # yield 新题目
+        while emitted < len(objects):
+            yield objects[emitted]
+            emitted += 1
+            if emitted >= total_count:
+                return
+    # 自然结束（async generator 不能 return value）
 
 
 async def _search_hot_events(province: str) -> str:
@@ -176,3 +236,31 @@ async def generate_questions_institution(
     ], temperature=temp, api_key=api_key, api_base=api_base, model=model)
 
     return _parse_questions(result, total_count)
+
+
+async def generate_questions_stream(
+    prompt_name: str,
+    prompt_vars: dict,
+    total_count: int,
+    api_key: str | None = None,
+    api_base: str | None = None,
+    model: str | None = None,
+):
+    """流式生成面试题：调用 LLM stream → 逐题 yield（用于 SSE 实时推送）。
+
+    用法：
+        async for q in generate_questions_stream("generate_questions_civil_service", {...}, 3):
+            # 每生成一题就存 DB 并 SSE push
+            yield q
+    """
+    from app.services.llm_client import llm_chat_stream
+
+    system, prompt, temp = load_prompt(prompt_name, **prompt_vars)
+
+    chunks = llm_chat_stream([
+        {"role": "system", "content": system},
+        {"role": "user", "content": prompt},
+    ], temperature=temp, api_key=api_key, api_base=api_base, model=model)
+
+    async for question in stream_questions(chunks, total_count):
+        yield question

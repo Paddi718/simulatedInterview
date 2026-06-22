@@ -23,8 +23,8 @@ interface QuestionScore {
   evaluation: string; reference_answer: string; improvement_suggestion: string;
   error?: string;
 }
-// 状态机: question->recording->transcribing->review->submitting->(next)question
-type Phase = 'question' | 'recording' | 'transcribing' | 'review' | 'submitting' | 'scoring' | 'feedback';
+// 状态机: generating->question->recording->transcribing->review->submitting->(next)question
+type Phase = 'generating' | 'question' | 'recording' | 'transcribing' | 'review' | 'submitting' | 'scoring' | 'feedback';
 
 const QUESTION_TYPE_MAP: Record<string, string> = {
   introduction: '自我介绍', behavioral: '行为面试', technical: '专业技能',
@@ -106,6 +106,9 @@ function SessionContent() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [completing, setCompleting] = useState(false);
   const [hasSpeechAPI, setHasSpeechAPI] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [genTotal, setGenTotal] = useState(0);
+  const [genCount, setGenCount] = useState(0);
 
   const timerRef = useRef<NodeJS.Timeout|null>(null);
   const timerValueRef = useRef(0);
@@ -248,12 +251,62 @@ function SessionContent() {
       if(d.status==='preparing')await api.post(`/api/interview/${interviewId}/start`);
       const qs = d.questions||[];
       setQuestions(qs);
-      // 续答：跳到第一个未回答的题目（已有回答的不再进入）
+      // 续答：跳到第一个未回答的题目
       const firstUnanswered = qs.findIndex(q => !q.user_answer_transcript);
       if(firstUnanswered>=0)setCurrentIndex(firstUnanswered);
+
+      // 流式生成中 → 连接 SSE 逐题接收
+      if(d.status==='generating'){
+        setGenerating(true);
+        setPhase('generating');
+        setGenTotal(0); setGenCount(qs.length);
+        connectQuestionSSE();
+      }
     }catch(e:any){setError(e.message||'加载失败');}finally{setLoading(false);}
   },[interviewId,router]);
-  useEffect(()=>{loadInterview();connectWs();return ()=>{if(wsTimerRef.current)clearTimeout(wsTimerRef.current);};},[loadInterview,connectWs]);
+  // SSE: 流式接收题目
+  const questionSseRef = useRef<EventSource|null>(null);
+  const connectQuestionSSE = useCallback(() => {
+    if(!interviewId) return;
+    if(questionSseRef.current){questionSseRef.current.close();questionSseRef.current=null;}
+    const token=localStorage.getItem('access_token');
+    const base=(process.env.NEXT_PUBLIC_API_URL||'http://localhost:8000').replace(/^http/,'ws');
+    const url=`${(process.env.NEXT_PUBLIC_API_URL||'http://localhost:8000')}/api/interview/${interviewId}/stream-questions?token=${token}`;
+
+    fetch(url,{headers:token?{Authorization:`Bearer ${token}`}:{}}).then(async(res)=>{
+      if(!res.ok||!res.body)return;
+      const reader=res.body.getReader();
+      const decoder=new TextDecoder();
+      let buf='';
+      while(true){
+        const{done,value}=await reader.read();
+        if(done||!mountedRef.current)break;
+        buf+=decoder.decode(value,{stream:true});
+        const lines=buf.split('\n');
+        buf=lines.pop()||'';
+        for(const line of lines){
+          if(line.startsWith('data: ')){
+            try{
+              const data=JSON.parse(line.slice(6));
+              if(data.type==='question'){
+                setQuestions(prev=>{const exists=prev.find(q=>q.order_index===data.index);if(exists)return prev;return[...prev,{order_index:data.index,question_text:data.question.question_text,question_type:data.question.question_type}].sort((a,b)=>a.order_index-b.order_index);});
+                setGenCount(data.index);
+                setGenTotal(data.total);
+                if(data.index===1){
+                  setGenerating(false);setPhase('question');
+                }
+              }else if(data.type==='done'){
+                setGenerating(false);
+                if(phase==='generating')setPhase('question');
+              }
+            }catch{}
+          }
+        }
+      }
+    }).catch(()=>{});
+  },[interviewId]);
+
+  useEffect(()=>{loadInterview();connectWs();return ()=>{if(wsTimerRef.current)clearTimeout(wsTimerRef.current);if(questionSseRef.current){questionSseRef.current.close();questionSseRef.current=null;}};},[loadInterview,connectWs]);
 
   // 总耗时计时器：从进入面试页面到离开，全程计时
   useEffect(()=>{
@@ -617,9 +670,43 @@ function SessionContent() {
           {/* ======== Phase-based rendering ======== */}
           <div className="px-6 sm:px-8 py-6 sm:py-8">
 
+            {/* ---- generating: AI 正在出题 ---- */}
+            {phase==='generating'&&(
+              <div className="flex flex-col items-center gap-5 py-6">
+                <Loader2 className="w-10 h-10 text-brand-500 animate-spin" />
+                <div className="text-center">
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    AI 正在生成面试题目...
+                  </p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                    {genCount > 0
+                      ? `已生成 ${genCount}${genTotal ? '/' + genTotal : ''} 题`
+                      : '正在分析简历和岗位要求'}
+                  </p>
+                </div>
+                {/* 已生成的题目列表 */}
+                {questions.length > 0 && (
+                  <div className="w-full space-y-1.5 max-h-48 overflow-y-auto">
+                    {questions.map(q => (
+                      <div key={q.order_index} className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 rounded-lg px-3 py-1.5">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-500 shrink-0" />
+                        <span className="truncate">第{q.order_index}题: {q.question_text.slice(0, 40)}...</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* ---- question: ready to record ---- */}
             {phase==='question'&&(
               <div className="flex flex-col items-center gap-6">
+                {generating && genCount < (genTotal||999) && (
+                  <div className="flex items-center gap-2 text-xs text-brand-600 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/30 px-4 py-2 rounded-xl border border-brand-100 dark:border-brand-900">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    剩余题目生成中（{genCount}/{genTotal||'?'}），当前可答题
+                  </div>
+                )}
                 {!hasSpeechAPI&&(
                   <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 px-4 py-2 rounded-xl border border-amber-100 dark:border-amber-900">
                     <AlertCircle className="w-3.5 h-3.5" />
@@ -843,15 +930,36 @@ function SessionContent() {
                   </div>
                 )}
 
-                {/* Next button */}
-                <button onClick={moveToNextOrComplete}
-                  className="w-full inline-flex items-center justify-center gap-2 px-6 py-3 bg-brand-500 text-white font-medium rounded-xl hover:bg-brand-600 transition-all shadow-sm shadow-brand-200 dark:shadow-brand-900">
-                  {currentIndex<questions.length-1 ? (
-                    <>下一题 <ChevronRight className="w-4 h-4" /></>
-                  ) : (
-                    '查看面试结果'
-                  )}
-                </button>
+                {/* Next button — 如果下一题还没生成则禁用 */}
+                {(()=>{
+                  const nextQExists = currentIndex >= questions.length - 1 || questions[currentIndex + 1];
+                  const nextUnanswered = (()=>{
+                    let n=currentIndex+1;
+                    while(n<questions.length){if(!questions[n]?.user_answer_transcript)return n;n++;}
+                    return -1;
+                  })();
+                  const canAdvance = nextUnanswered >= 0 && questions[nextUnanswered];
+                  return (
+                    <button
+                      onClick={canAdvance ? moveToNextOrComplete : undefined}
+                      disabled={!canAdvance}
+                      title={!canAdvance && generating ? '下一题尚未生成，请稍候...' : ''}
+                      className={`w-full inline-flex items-center justify-center gap-2 px-6 py-3 text-white font-medium rounded-xl transition-all shadow-sm ${
+                        canAdvance
+                          ? 'bg-brand-500 hover:bg-brand-600 shadow-brand-200 dark:shadow-brand-900'
+                          : 'bg-gray-300 dark:bg-gray-700 cursor-not-allowed'
+                      }`}
+                    >
+                      {generating && !nextQExists && currentIndex < questions.length - 1 ? (
+                        <><Loader2 className="w-4 h-4 animate-spin" /> 题目生成中...</>
+                      ) : currentIndex < questions.length - 1 ? (
+                        <>下一题 <ChevronRight className="w-4 h-4" /></>
+                      ) : (
+                        '查看面试结果'
+                      )}
+                    </button>
+                  );
+                  })()}
               </div>
             )}
           </div>
