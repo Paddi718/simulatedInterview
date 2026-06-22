@@ -159,10 +159,9 @@ function SessionContent() {
     setTtsPlaying(false);
   }, []);
 
-  // 使用 HTMLAudioElement 播放（兼容性最好，浏览器原生处理自动播放策略）
+  // 使用 HTMLAudioElement 播放。调用者必须先 stopTts() 清理前一个音频。
   const playTts = (buf: ArrayBuffer) => {
     if (!mountedRef.current) return;
-    stopTts();
     try {
       const blob = new Blob([buf], { type: 'audio/mpeg' });
       const url = URL.createObjectURL(blob);
@@ -199,7 +198,7 @@ function SessionContent() {
       ws.onopen=()=>{setWsConnected(true);};
       ws.onmessage=(e)=>{
         if(!mountedRef.current)return;
-        if(e.data instanceof ArrayBuffer){playTts(e.data);return;}
+        if(e.data instanceof ArrayBuffer){stopTts();playTts(e.data);return;}
         try{const m=JSON.parse(e.data);
           if(m.type==='question_score'&&!m.error){setFeedback(m);setPhase('feedback');}
           else if(m.type==='question_score'&&m.error)setPhase('review');
