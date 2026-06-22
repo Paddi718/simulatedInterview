@@ -398,7 +398,7 @@ function HistoryPageContent() {
                       {/* 公务员/事业单位：显示层级和岗位类别；私企：显示难度 */}
                       {(r.category === 'civil_service' || r.category === 'institution') ? (
                         <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium leading-tight ${CATEGORY_COLORS[r.category] || ''}`}>
-                          {r.category_config?.level || ''}{r.category_config?.level && r.category_config?.position_category ? '·' : ''}{r.category_config?.position_category || ''}
+                          {[r.category_config?.province, r.category_config?.level, r.category_config?.position_category].filter(Boolean).join('·') || ''}
                         </span>
                       ) : (
                         <span

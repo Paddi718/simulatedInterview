@@ -273,7 +273,7 @@ export default function ResultPage() {
             <div className="flex items-center gap-3 mt-1.5">
               {(result.category === 'civil_service' || result.category === 'institution') ? (
                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-medium border bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-400 dark:border-red-800">
-                  {result.category_config?.level || ''}{result.category_config?.level && result.category_config?.position_category ? '·' : ''}{result.category_config?.position_category || ''}
+                  {[result.category_config?.province, result.category_config?.level, result.category_config?.position_category].filter(Boolean).join('·') || '公务员/事业单位'}
                 </span>
               ) : (
                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-medium border ${DIFFICULTY_CLASS[result.difficulty] || ''}`}>
