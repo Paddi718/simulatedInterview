@@ -14,6 +14,7 @@ import {
   Sun,
   ChevronLeft,
   Menu,
+  Star,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTheme } from './ThemeProvider'
@@ -24,6 +25,7 @@ const navItems = [
   { label: '开始面试', href: '/interview/prepare', icon: PlayCircle },
   { label: '历史记录', href: '/history', icon: History },
   { label: '简历管理', href: '/resume', icon: FileText },
+  { label: '收藏题目', href: '/favorites', icon: Star },
 ]
 
 export default function Sidebar() {

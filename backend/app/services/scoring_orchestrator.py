@@ -91,6 +91,13 @@ async def run_scoring_pipeline(interview_id: uuid.UUID):
             jd = j_result.scalar_one_or_none()
             jd_data = jd.parsed_data if jd else {}
 
+            # 查找用户 LLM 配置（优先使用用户配置，fallback 到全局 .env）
+            from app.models.user import User
+            from app.services.llm_client import extract_llm_config
+            u_result = await db.execute(select(User).where(User.id == interview.user_id))
+            user_db = u_result.scalar_one_or_none()
+            llm_key, llm_base, llm_llm_model = extract_llm_config(user_db.llm_config if user_db else None)
+
             total_q = len(questions)
             print(f"[Orchestrator] Starting scoring for interview {interview_id}, {total_q} questions")
 
@@ -106,7 +113,8 @@ async def run_scoring_pipeline(interview_id: uuid.UUID):
                 if question.ai_score is not None:
                     return question, None  # 已评分，跳过
                 try:
-                    scores = await score_question(question, resume_data, jd_data)
+                    scores = await score_question(question, resume_data, jd_data,
+                        api_key=llm_key, api_base=llm_base, model=llm_llm_model)
                     return question, scores
                 except Exception as e:
                     print(f"[Orchestrator] Q{question.order_index} scoring failed: {e}")
@@ -174,6 +182,12 @@ async def run_scoring_pipeline(interview_id: uuid.UUID):
             await db.commit()
             print(f"[Orchestrator] Phase 2 done: total_score={agg['total_score']}")
 
+            # Phase 2b: 同步评分结果到收藏表（无条件同步，user_answer_transcript 可能是空字符串）
+            from app.routers.interview import _sync_favorite_scores
+            for question in questions:
+                if question.ai_score is not None:
+                    await _sync_favorite_scores(question.question_text, interview.user_id)
+
             # ═══════════════════════════════════════════
             # Phase 3: LLM 生成总评 + 简历建议
             # ═══════════════════════════════════════════
@@ -182,7 +196,8 @@ async def run_scoring_pipeline(interview_id: uuid.UUID):
             try:
                 from app.services.scoring_service import generate_interview_overview
                 overview = await asyncio.wait_for(
-                    generate_interview_overview(interview, questions, resume_data, jd_data),
+                    generate_interview_overview(interview, questions, resume_data, jd_data,
+                        api_key=llm_key, api_base=llm_base, model=llm_llm_model),
                     timeout=60.0
                 )
                 interview.ai_overview = overview.get("overview", "")

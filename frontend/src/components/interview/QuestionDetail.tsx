@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   ChevronDown, ChevronUp, Clock, Brain, MessageSquare,
   Star, Target, Zap, FileText, Lightbulb, BookOpen,
@@ -59,29 +59,60 @@ export default function QuestionDetail({ question, interviewId }: QuestionDetail
   const [expanded, setExpanded] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [loadingAudio, setLoadingAudio] = useState(false);
+  const [audioError, setAudioError] = useState('');
   const audioCtxRef = useRef<AudioContext | null>(null);
+
+  // 卸载时关闭 AudioContext
+  useEffect(() => () => {
+    try { audioCtxRef.current?.close(); } catch {}
+    audioCtxRef.current = null;
+  }, []);
 
   const handlePlay = async () => {
     if (playing || loadingAudio || !interviewId) return;
+    setAudioError('');
     setLoadingAudio(true);
     try {
       const token = localStorage.getItem('access_token');
       const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
       const url = `${apiBase}/api/interview/${interviewId}/recording/${question.order_index}`;
       const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
-      if (!res.ok) { setLoadingAudio(false); return; }
+      if (!res.ok) {
+        if (res.status === 404) setAudioError('未找到录音文件');
+        else setAudioError(`加载失败 (${res.status})`);
+        setLoadingAudio(false);
+        return;
+      }
       const buf = await res.arrayBuffer();
-      const ctx = new AudioContext();
-      audioCtxRef.current = ctx;
-      const audio = await ctx.decodeAudioData(buf);
-      const source = ctx.createBufferSource();
-      source.buffer = audio;
-      source.connect(ctx.destination);
-      setLoadingAudio(false);
-      setPlaying(true);
-      source.onended = () => { setPlaying(false); ctx.close(); audioCtxRef.current = null; };
-      source.start();
-    } catch { setLoadingAudio(false); }
+      if (buf.byteLength < 100) { setAudioError('录音文件过小'); setLoadingAudio(false); return; }
+
+      // 使用 <audio> 元素的 srcObject 方式更兼容，但 AudioContext 更灵活
+      // 先尝试 decodeAudioData，失败则降级为 Blob URL + Audio 元素
+      try {
+        const ctx = new AudioContext();
+        audioCtxRef.current = ctx;
+        const audio = await ctx.decodeAudioData(buf);
+        const source = ctx.createBufferSource();
+        source.buffer = audio;
+        source.connect(ctx.destination);
+        setLoadingAudio(false);
+        setPlaying(true);
+        source.onended = () => { setPlaying(false); ctx.close(); audioCtxRef.current = null; };
+        source.start();
+      } catch (decodeErr) {
+        // WebM 在某些浏览器上解码失败（如 Firefox），降级为 Audio 元素
+        try { audioCtxRef.current?.close(); } catch {}
+        audioCtxRef.current = null;
+        const blob = new Blob([buf], { type: 'audio/webm' });
+        const blobUrl = URL.createObjectURL(blob);
+        const audioEl = new Audio(blobUrl);
+        setLoadingAudio(false);
+        setPlaying(true);
+        audioEl.onended = () => { setPlaying(false); URL.revokeObjectURL(blobUrl); };
+        audioEl.onerror = () => { setPlaying(false); setAudioError('音频格式不支持'); URL.revokeObjectURL(blobUrl); };
+        audioEl.play().catch(() => { setPlaying(false); setAudioError('播放失败'); URL.revokeObjectURL(blobUrl); });
+      }
+    } catch { setLoadingAudio(false); setAudioError('网络错误，请重试'); }
   };
 
   const handleStop = () => {
@@ -173,6 +204,9 @@ export default function QuestionDetail({ question, interviewId }: QuestionDetail
                   )}
                   {playing ? '播放中' : loadingAudio ? '加载中' : '回放'}
                 </button>
+              )}
+              {audioError && (
+                <span className="text-xs text-red-500 dark:text-red-400 ml-1">{audioError}</span>
               )}
             </h4>
             {hasTranscript ? (

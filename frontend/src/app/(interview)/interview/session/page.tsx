@@ -15,6 +15,7 @@ interface Question {
   order_index: number; question_text: string;
   question_type: 'introduction' | 'behavioral' | 'technical' | 'situational' | 'career';
   user_answer_transcript?: string|null;
+  is_favorited?: boolean;
 }
 interface QuestionScore {
   order_index: number; total_score: number;
@@ -100,6 +101,7 @@ function SessionContent() {
   const [asrLoading, setAsrLoading] = useState(false);
   const [wsConnected, setWsConnected] = useState(false);
   const [ttsPlaying, setTtsPlaying] = useState(false);
+  const [audioLoading, setAudioLoading] = useState(false);
   const [feedback, setFeedback] = useState<QuestionScore|null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
   const [completing, setCompleting] = useState(false);
@@ -118,106 +120,125 @@ function SessionContent() {
   const liveTextRef = useRef('');
   const liveTextElRef = useRef<HTMLParagraphElement|null>(null);
   const stoppingManuallyRef = useRef(false);
+  const recordingGenRef = useRef(0); // 录音代际，防止旧 SR 事件污染新会话
+  const mountedRef = useRef(true); // 组件生命周期标记，防止卸载后异步回调执行
 
   const stopAll = () => {
-    if (speechRef.current) { try { speechRef.current.stop(); } catch {} speechRef.current = null; }
+    if (speechRef.current) { try { speechRef.current.abort(); } catch {} speechRef.current = null; }
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') { try { mediaRecorderRef.current.stop(); } catch {} }
     if (streamRef.current) { streamRef.current.getTracks().forEach(t=>t.stop()); streamRef.current = null; }
   };
 
-  /* ---------- TTS ---------- */
-  const wsReadyRef = useRef(false);
-  const ttsQueueRef = useRef<{text:string;voice:string;speed:number}[]>([]);
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const audioSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  /* ---------- TTS Audio ---------- */
+  const audioElRef = useRef<HTMLAudioElement | null>(null);
+  const audioBlobUrlRef = useRef<string | null>(null);
 
-  const stopTts = useCallback(() => {
-    // 停止当前播放
-    try { audioSourceRef.current?.stop(); } catch {}
-    audioSourceRef.current = null;
-    try { audioCtxRef.current?.close(); } catch {}
-    audioCtxRef.current = null;
-    setTtsPlaying(false);
-    ttsQueueRef.current = [];
+  // 确保 audio 元素存在
+  const getAudioEl = useCallback(() => {
+    if (!audioElRef.current) {
+      audioElRef.current = new Audio();
+      audioElRef.current.preload = 'auto';
+    }
+    return audioElRef.current;
   }, []);
 
-  const ttsGenRef = useRef(0); // 用于标记最新一次 TTS 请求
+  const stopTts = useCallback(() => {
+    const el = audioElRef.current;
+    if (el) {
+      try { el.pause(); el.currentTime = 0; } catch {}
+    }
+    if (audioBlobUrlRef.current) {
+      URL.revokeObjectURL(audioBlobUrlRef.current);
+      audioBlobUrlRef.current = null;
+    }
+    setTtsPlaying(false);
+  }, []);
 
-  const playTts = async (buf: ArrayBuffer) => {
+  // 使用 HTMLAudioElement 播放（兼容性最好，浏览器原生处理自动播放策略）
+  const playTts = (buf: ArrayBuffer) => {
+    if (!mountedRef.current) return;
     stopTts();
-    const gen = ++ttsGenRef.current; // 当前播放的代际
-    const c = new AudioContext();
-    audioCtxRef.current = c;
     try {
-      const a = await c.decodeAudioData(buf.slice(0));
-      // 如果启动了新的播放或者用户切题了，丢弃旧请求
-      if (gen !== ttsGenRef.current || !audioCtxRef.current) { c.close(); return; }
-      const s = c.createBufferSource();
-      audioSourceRef.current = s;
-      s.buffer = a;
-      s.connect(c.destination);
+      const blob = new Blob([buf], { type: 'audio/mpeg' });
+      const url = URL.createObjectURL(blob);
+      audioBlobUrlRef.current = url;
+      const el = getAudioEl();
+      el.src = url;
+      el.onended = () => { setTtsPlaying(false); };
+      el.onerror = () => { console.warn('[TTS] Audio playback error'); setTtsPlaying(false); };
       setTtsPlaying(true);
-      s.onended = () => { setTtsPlaying(false); c.close(); audioCtxRef.current = null; audioSourceRef.current = null; };
-      s.start();
-    } catch {
-      if (gen === ttsGenRef.current) setTtsPlaying(false);
-      try { c.close(); } catch {}
-      if (audioCtxRef.current === c) audioCtxRef.current = null;
+      el.play().catch((e) => {
+        console.warn('[TTS] play() rejected:', e.message);
+        if (mountedRef.current) setTtsPlaying(false);
+      });
+    } catch (e) {
+      console.warn('[TTS] playTts error:', e);
+      if (mountedRef.current) setTtsPlaying(false);
     }
   };
 
-  const flushTtsQueue = useCallback(() => {
-    const ws = wsRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    const queue = ttsQueueRef.current;
-    while (queue.length > 0) {
-      const req = queue.shift()!;
-      ws.send(JSON.stringify({ type: 'tts_request', text: req.text, voice: req.voice, speed: req.speed }));
-    }
-  }, []);
-
   /* ---------- WebSocket ---------- */
+  const wsTimerRef = useRef<ReturnType<typeof setTimeout>|null>(null);
   const connectWs = useCallback(() => {
     if (!interviewId) return;
     const t=localStorage.getItem('access_token'); if(!t) return;
     if(wsRef.current?.readyState===WebSocket.OPEN) return;
     if(wsRef.current?.readyState===WebSocket.CONNECTING) return;
     if(wsRef.current){ try{wsRef.current.close();}catch{} }
-    wsReadyRef.current = false;
-    const ws=new WebSocket(`${getWsUrl()}/api/ws/interview/${interviewId}?token=${t}`);
-    ws.binaryType='arraybuffer';
-    ws.onopen=()=>{
-      setWsConnected(true);
-      wsReadyRef.current = true;
-      flushTtsQueue();
-    };
-    ws.onmessage=(e)=>{
-      if(e.data instanceof ArrayBuffer){playTts(e.data);return;}
-      try{const m=JSON.parse(e.data);
-        if(m.type==='question_score'&&!m.error){setFeedback(m);setPhase('feedback');}
-        else if(m.type==='question_score'&&m.error)setPhase('review');
-      }catch{}
-    };
-    ws.onclose=()=>{setWsConnected(false);wsReadyRef.current=false;wsRef.current=null;};
-    ws.onerror=()=>{setWsConnected(false);wsReadyRef.current=false;wsRef.current=null;};
-    wsRef.current=ws;
-  },[interviewId, flushTtsQueue]);
+    // 延迟连接避免与 Next.js 路由导航冲突
+    if (wsTimerRef.current) clearTimeout(wsTimerRef.current);
+    wsTimerRef.current = setTimeout(() => {
+      if (!mountedRef.current || !interviewId) return;
+      const ws=new WebSocket(`${getWsUrl()}/api/ws/interview/${interviewId}?token=${t}`);
+      ws.binaryType='arraybuffer';
+      ws.onopen=()=>{setWsConnected(true);};
+      ws.onmessage=(e)=>{
+        if(!mountedRef.current)return;
+        if(e.data instanceof ArrayBuffer){playTts(e.data);return;}
+        try{const m=JSON.parse(e.data);
+          if(m.type==='question_score'&&!m.error){setFeedback(m);setPhase('feedback');}
+          else if(m.type==='question_score'&&m.error)setPhase('review');
+        }catch{}
+      };
+      ws.onclose=()=>{setWsConnected(false);wsRef.current=null;};
+      ws.onerror=()=>{setWsConnected(false);wsRef.current=null;};
+      wsRef.current=ws;
+    }, 800);
+  },[interviewId]);
 
-  // 使用 Edge-TTS 朗读（通过 WebSocket）
-  const speak=useCallback((text:string)=>{
-    if (!text) return;
-    stopTts(); // 先停掉当前播放
-    setTtsPlaying(true); // 立即标记为播放中，防止重复点击
-    const storedVoice=localStorage.getItem('tts_voice')||'zh-CN-XiaoxiaoNeural';
-    const storedSpeed=parseFloat(localStorage.getItem('tts_speed')||'1.0');
-    const ws=wsRef.current;
-    if(ws && ws.readyState===WebSocket.OPEN){
-      ws.send(JSON.stringify({type:'tts_request',text,voice:storedVoice,speed:storedSpeed}));
-      return;
+  // 通过 REST API 获取预生成的 Edge-TTS 音频并播放
+  const playQuestionAudio=useCallback(async()=>{
+    if(!interviewId||!questions[currentIndex])return;
+    stopTts();
+    setTtsPlaying(true);
+    setAudioLoading(true);
+    const orderIndex=questions[currentIndex].order_index;
+    const token=localStorage.getItem('access_token');
+    const apiBase=process.env.NEXT_PUBLIC_API_URL||'http://localhost:8000';
+    const url=`${apiBase}/api/interview/${interviewId}/audio/${orderIndex}`;
+    try{
+      const res=await fetch(url,{headers:token?{Authorization:`Bearer ${token}`}:{}});
+      if(!mountedRef.current)return;
+      if(!res.ok)throw new Error(`HTTP ${res.status}`);
+      const buf=await res.arrayBuffer();
+      if(!mountedRef.current)return;
+      setAudioLoading(false);
+      playTts(buf);
+    }catch(e){
+      console.warn('[TTS] playQuestionAudio failed:', e);
+      if(mountedRef.current){setTtsPlaying(false);setAudioLoading(false);}
     }
-    ttsQueueRef.current.push({text,voice:storedVoice,speed:storedSpeed});
-    connectWs();
-  },[connectWs, stopTts]);
+  },[interviewId,questions,currentIndex,stopTts]);
+
+  // 收藏切换
+  const toggleFavorite=useCallback(async()=>{
+    if(!interviewId||!questions[currentIndex])return;
+    const q=questions[currentIndex];
+    try{
+      const r=await api.post<{is_favorited:boolean}>(`/api/interview/${interviewId}/question/${q.order_index}/favorite`);
+      setQuestions(prev=>prev.map((qq,i)=>i===currentIndex?{...qq,is_favorited:r.is_favorited}:qq));
+    }catch{/* 网络错误不提示 */}
+  },[interviewId,questions,currentIndex]);
 
   /* ---------- Load ---------- */
   const loadInterview=useCallback(async()=>{
@@ -232,29 +253,49 @@ function SessionContent() {
       if(firstUnanswered>=0)setCurrentIndex(firstUnanswered);
     }catch(e:any){setError(e.message||'加载失败');}finally{setLoading(false);}
   },[interviewId,router]);
-  useEffect(()=>{loadInterview();connectWs();},[loadInterview,connectWs]);
+  useEffect(()=>{loadInterview();connectWs();return ()=>{if(wsTimerRef.current)clearTimeout(wsTimerRef.current);};},[loadInterview,connectWs]);
 
-  // 卸载时清理所有资源
-  useEffect(() => () => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    stopAll();
-    stopTts();
-    ttsQueueRef.current = [];
-    if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
-    try{(window as any).speechSynthesis?.cancel();}catch{}
+  // 挂载时置位 mountedRef，卸载时清理所有资源
+  // 注意：必须在挂载主体里重置 mountedRef=true，否则 StrictMode 双重挂载会导致它永久为 false
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (wsTimerRef.current) clearTimeout(wsTimerRef.current);
+      if (audioElRef.current) { try { audioElRef.current.pause(); } catch {} audioElRef.current = null; }
+      stopAll();
+      stopTts();
+      if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
+      try{(window as any).speechSynthesis?.cancel();}catch{}
+    };
   }, [stopTts]);
 
-  // 自动朗读
+  // 自动朗读 — 直接在 effect 中发起请求
   const [hasAutoRead, setHasAutoRead] = useState(false);
+
   useEffect(()=>{
-    if(phase!=='question'||!questions[currentIndex])return;
+    if(phase!=='question'||!questions[currentIndex]||!interviewId)return;
     const autoRead=localStorage.getItem('tts_auto_read')==='true';
     if(!autoRead||hasAutoRead)return;
     setHasAutoRead(true);
-    speak(questions[currentIndex].question_text);
-  },[phase,currentIndex,questions,hasAutoRead,speak]);
 
-  useEffect(()=>{stopTts();try{(window as any).speechSynthesis?.cancel();}catch{}setHasAutoRead(false);},[currentIndex, stopTts]);
+    const q = questions[currentIndex];
+    const token=localStorage.getItem('access_token');
+    const apiBase=process.env.NEXT_PUBLIC_API_URL||'http://localhost:8000';
+    const url=`${apiBase}/api/interview/${interviewId}/audio/${q.order_index}`;
+
+    stopTts();
+    setTtsPlaying(true);
+    setAudioLoading(true);
+
+    fetch(url,{headers:token?{Authorization:`Bearer ${token}`}:{}})
+      .then(res=>{if(!mountedRef.current)throw new Error('unmounted');if(!res.ok)throw new Error(`HTTP ${res.status}`);return res.arrayBuffer();})
+      .then(buf=>{if(!mountedRef.current)return;setAudioLoading(false);playTts(buf);})
+      .catch(e=>{if(e.message==='unmounted')return;console.warn('[AutoRead] failed:',e);if(mountedRef.current){setTtsPlaying(false);setAudioLoading(false);}});
+  },[phase,currentIndex,questions,hasAutoRead,stopTts,interviewId]);
+
+  useEffect(()=>{stopTts();setAudioLoading(false);try{(window as any).speechSynthesis?.cancel();}catch{}setHasAutoRead(false);},[currentIndex,stopTts]);
 
   /* ---------- Thinking timer ---------- */
   // 兜底：如果 moveToNextOrComplete 已启动计时器则跳过，否则在此启动
@@ -268,15 +309,29 @@ function SessionContent() {
 
   /* ---------- Recording ---------- */
   const startRecording=useCallback(async()=>{
+    // 立即停止 TTS 朗读，防止题目音频被录入麦克风
+    stopTts();
+    setAudioLoading(false);
+    // 先彻底清理上一次录音的 SR 实例，防止旧事件残留
+    if(speechRef.current){
+      try{speechRef.current.abort();}catch{}
+      speechRef.current=null;
+    }
     if(thinkingRef.current){clearInterval(thinkingRef.current);thinkingRef.current=null;}
     setFinalThinkingTime(thinkingValueRef.current);
+    // 重置所有状态&ref（新录音开始，一切从零开始）
     setTranscript('');setLiveText('');liveTextRef.current='';setTimer(0);setRecordedTime(0);timerValueRef.current=0;
     chunksRef.current=[];stoppingManuallyRef.current=false;connectWs();
+    // 递增代际，所有旧 SR 事件将被忽略
+    recordingGenRef.current++;
+    const myGen = recordingGenRef.current;
     const SR=createSR();if(!SR)setHasSpeechAPI(false);
     try{
       const stream=await navigator.mediaDevices.getUserMedia({audio:true});streamRef.current=stream;
       if(SR){speechRef.current=SR;
         SR.onresult=(e:any)=>{
+          // 代际检查：防止旧 SR 事件污染新录音
+          if(recordingGenRef.current !== myGen) return;
           for(let i=e.resultIndex;i<e.results.length;i++){
             const r=e.results[i];
             if(r.isFinal)liveTextRef.current+=r[0].transcript;
@@ -285,13 +340,17 @@ function SessionContent() {
           for(let i=0;i<e.results.length;i++){
             if(!e.results[i].isFinal)interim+=e.results[i][0].transcript;
           }
-          // 直接写 DOM 避免高频 setState 触发全组件重渲染（新 UI 元素重）
+          // 直接写 DOM 避免高频 setState 触发全组件重渲染
           const displayText=liveTextRef.current+interim;
           if(liveTextElRef.current)liveTextElRef.current.textContent=displayText;
-          setLiveText(displayText); // 保持 state 同步（低频用于 UI 条件渲染）
+          setLiveText(displayText);
         };
-        SR.onerror=(e:any)=>{if(e.error!=='no-speech'&&e.error!=='aborted')console.warn('SR error:',e.error);};
+        SR.onerror=(e:any)=>{
+          if(recordingGenRef.current !== myGen) return;
+          if(e.error!=='no-speech'&&e.error!=='aborted')console.warn('SR error:',e.error);
+        };
         SR.onend=()=>{
+          if(recordingGenRef.current !== myGen) return;
           // 停顿后自动重启识别（continuous=true 在某些浏览器不可靠）
           if(!stoppingManuallyRef.current && mediaRecorderRef.current?.state==='recording'){
             try{speechRef.current?.start();}catch{}
@@ -301,7 +360,15 @@ function SessionContent() {
       const mt=MediaRecorder.isTypeSupported('audio/webm;codecs=opus')?'audio/webm;codecs=opus':'audio/webm';
       const rec=new MediaRecorder(stream,{mimeType:mt});
       rec.ondataavailable=(e)=>{if(e.data.size>0)chunksRef.current.push(e.data);};
-      rec.onstop=()=>{if(speechRef.current){try{speechRef.current.stop();}catch{}}stream.getTracks().forEach(t=>t.stop());processAudio();};
+      rec.onstop=()=>{
+        if(speechRef.current){try{speechRef.current.stop();}catch{}}
+        stream.getTracks().forEach(t=>t.stop());
+        // 延迟 processAudio：等待浏览器 SpeechRecognition 的最终 onresult 事件 flush
+        setTimeout(()=>{
+          if(recordingGenRef.current === myGen) processAudio();
+          else processAudio(); // 非活跃代际也处理（兜底），但 processAudio 内部会检查
+        }, 250);
+      };
       rec.start();mediaRecorderRef.current=rec;
       timerRef.current=setInterval(()=>{const v=timerValueRef.current+1;timerValueRef.current=v;setTimer(v);},1000);
       setPhase('recording');
@@ -311,8 +378,11 @@ function SessionContent() {
   const processAudio=async()=>{
     if(timerRef.current){clearInterval(timerRef.current);timerRef.current=null;}
     const time=timerValueRef.current;setRecordedTime(time);totalTimeRef.current+=time;timerValueRef.current=0;
+    // 在 SR 完全停止后，捕获最终的浏览器转写文本
     const browserText=liveTextRef.current;
     setTranscript(browserText);
+    // 同时更新 displayText（liveText 用于 UI 条件渲染）
+    setLiveText(browserText);
     if(chunksRef.current.length===0){setPhase('review');return;}
     setAsrLoading(true);
     setPhase('review');
@@ -332,8 +402,16 @@ function SessionContent() {
 
   const stopRecording=useCallback(()=>{
     stoppingManuallyRef.current=true;
-    if(mediaRecorderRef.current&&mediaRecorderRef.current.state!=='inactive')mediaRecorderRef.current.stop();
-    else processAudio();
+    // 1. 先停止 SpeechRecognition，立即触发 onend 和最终 onresult 事件 flush
+    if(speechRef.current){try{speechRef.current.stop();}catch{}}
+    // 2. 延迟停止 MediaRecorder，确保 SR 最终结果已在 liveTextRef 中
+    setTimeout(()=>{
+      if(mediaRecorderRef.current&&mediaRecorderRef.current.state!=='inactive'){
+        mediaRecorderRef.current.stop(); // 触发 rec.onstop → processAudio
+      }else{
+        processAudio();
+      }
+    }, 200);
   },[]);
 
   /* ---------- Submit & Scoring ---------- */
@@ -377,7 +455,7 @@ function SessionContent() {
   },[currentIndex,questions]);
 
   const handleSkip=useCallback(()=>{if(phase==='scoring'||phase==='submitting')return;if(phase==='recording')stopRecording();setTimeout(()=>submitAnswer('',true),300);},[phase,stopRecording,submitAnswer]);
-  const handleComplete=useCallback(async()=>{if(!interviewId||completing)return;setCompleting(true);try{await api.post(`/api/interview/${interviewId}/complete`);router.push(`/interview/result/${interviewId}`);}catch{setCompleting(false);setError('完成失败');}},[interviewId,completing,router]);
+  const handleComplete=useCallback(async()=>{if(!interviewId||completing)return;stopTts();stopAll();setAudioLoading(false);setCompleting(true);try{await api.post(`/api/interview/${interviewId}/complete`);router.push(`/interview/result/${interviewId}`);}catch{setCompleting(false);setError('完成失败');}},[interviewId,completing,router]);
 
   /* ---------- Render ---------- */
   const total=questions.length,currentQ=questions[currentIndex];
@@ -500,10 +578,20 @@ function SessionContent() {
                 {currentQ.question_text}
               </h2>
               {phase==='question'&&(
-                <button onClick={()=>speak(currentQ.question_text)} disabled={ttsPlaying}
-                  className="flex-shrink-0 w-9 h-9 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 flex items-center justify-center disabled:opacity-40 transition-all" title="朗读题目">
-                  <Volume2 className={`w-4 h-4 text-gray-500 dark:text-gray-400 ${ttsPlaying?'animate-pulse':''}`} />
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <button onClick={playQuestionAudio} disabled={ttsPlaying||audioLoading}
+                    className="flex-shrink-0 w-9 h-9 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 flex items-center justify-center disabled:opacity-40 transition-all" title="朗读题目">
+                    {audioLoading?<Loader2 className="w-4 h-4 text-brand-500 animate-spin" />:<Volume2 className={`w-4 h-4 text-gray-500 dark:text-gray-400 ${ttsPlaying?'animate-pulse':''}`} />}
+                  </button>
+                  <button onClick={toggleFavorite}
+                    className={`flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center transition-all ${
+                      currentQ.is_favorited
+                        ? 'bg-amber-100 dark:bg-amber-950/40 text-amber-500'
+                        : 'bg-gray-100 dark:bg-gray-800 text-gray-400 hover:text-amber-500'
+                    }`} title={currentQ.is_favorited?'取消收藏':'收藏题目'}>
+                    <Star className={`w-4 h-4 ${currentQ.is_favorited?'fill-current':''}`} />
+                  </button>
+                </div>
               )}
             </div>
           </div>
@@ -531,8 +619,8 @@ function SessionContent() {
                 <p className="text-sm text-gray-400 dark:text-gray-500">准备好后，点击下方按钮开始录音回答</p>
                 <div className="relative">
                   <div className="absolute inset-0 rounded-full bg-brand-100 dark:bg-brand-950/50 animate-pulse opacity-50" />
-                  <button onClick={startRecording}
-                    className="relative w-28 h-28 rounded-full bg-white dark:bg-gray-800 border-2 border-dashed border-brand-300 dark:border-brand-600 hover:border-brand-500 dark:hover:border-brand-500 hover:bg-brand-50 dark:hover:bg-brand-950/30 transition-all flex items-center justify-center group shadow-sm">
+                  <button onClick={startRecording} disabled={ttsPlaying||audioLoading}
+                    className="relative w-28 h-28 rounded-full bg-white dark:bg-gray-800 border-2 border-dashed border-brand-300 dark:border-brand-600 hover:border-brand-500 dark:hover:border-brand-500 hover:bg-brand-50 dark:hover:bg-brand-950/30 transition-all flex items-center justify-center group shadow-sm disabled:opacity-40 disabled:cursor-not-allowed">
                     <Mic className="w-12 h-12 text-brand-500 dark:text-brand-400 group-hover:scale-105 transition-transform" />
                   </button>
                 </div>

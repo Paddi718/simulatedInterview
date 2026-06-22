@@ -23,6 +23,52 @@ from app.services.scoring_orchestrator import (
     run_scoring_pipeline, get_sse_event, cleanup_sse_event,
 )
 
+async def _sync_favorite_scores(q_text: str, user_id: uuid.UUID):
+    """评分完成后，将最新分数同步到独立的收藏表"""
+    try:
+        from app.database import async_session_factory
+        from app.models.favorited_question import FavoritedQuestion
+        from app.models.interview_question import InterviewQuestion
+        from app.models.interview import Interview
+
+        async with async_session_factory() as s:
+            # 查原题目的最新评分（可能有多道相同文本的题目，取最新有分数的）
+            q_result = await s.execute(
+                select(InterviewQuestion)
+                .join(Interview, InterviewQuestion.interview_id == Interview.id)
+                .where(
+                    Interview.user_id == user_id,
+                    InterviewQuestion.question_text == q_text,
+                    InterviewQuestion.ai_score != None,
+                )
+                .order_by(InterviewQuestion.ai_score.desc())
+                .limit(1)
+            )
+            latest = q_result.scalar_one_or_none()
+            if not latest:
+                return
+
+            # 更新匹配的收藏记录
+            from sqlalchemy import update as sql_update
+            await s.execute(
+                sql_update(FavoritedQuestion)
+                .where(
+                    FavoritedQuestion.user_id == user_id,
+                    FavoritedQuestion.question_text == q_text,
+                )
+                .values(
+                    ai_score=latest.ai_score,
+                    score_detail=latest.score_detail,
+                    ai_evaluation=latest.ai_evaluation,
+                    reference_answer=latest.reference_answer,
+                    improvement_suggestion=latest.improvement_suggestion,
+                )
+            )
+            await s.commit()
+    except Exception as e:
+        print(f"[Sync] FavoritedQuestion sync failed: {e}")
+
+
 router = APIRouter(prefix="/api/interview", tags=["interview"])
 
 # 后台评分 task 映射：interview_id (str) → asyncio.Task，用于取消和防 GC
@@ -379,6 +425,8 @@ async def submit_answer(
                     q.reference_answer = scores.get("reference_answer", "")
                     q.improvement_suggestion = scores.get("improvement_suggestion", "")
                     await bg_db.commit()
+                    # 同步到收藏表（如果用户已收藏此题）
+                    await _sync_favorite_scores(q.question_text, i.user_id)
                 except Exception as e:
                     print(f"[BG Score] Question scoring failed: {e}")
 
@@ -537,7 +585,7 @@ async def transcribe_audio(
 ):
     """接收上传的音频文件(webm/opus)，返回 FunASR 转写文本。同时保存录音用于回放。"""
     from app.services.asr_service import transcribe_pcm
-    from app.services.audio_cache import save_recording
+    from app.services.audio_cache import save_recording_sync
 
     # 获取题目序号（用于回放）
     order_index = int(request.query_params.get("order_index", 0))
@@ -549,6 +597,13 @@ async def transcribe_audio(
     tmp_path = None
     wav_path = None
     webm_bytes = body
+
+    # 立即保存原始录音（在转写之前），确保回放可用
+    try:
+        await asyncio.to_thread(save_recording_sync, str(interview_id), order_index, webm_bytes)
+    except Exception:
+        pass  # 录音保存失败不影响转写
+
     try:
         with tempfile.NamedTemporaryFile(suffix='.webm', delete=False) as f:
             f.write(body)
@@ -567,8 +622,6 @@ async def transcribe_audio(
                 wav_bytes = f.read()
             pcm_bytes = wav_bytes[44:]
             text = await transcribe_pcm(pcm_bytes)
-            # 保存原始录音供回放
-            asyncio.create_task(save_recording(str(interview_id), order_index, webm_bytes))
             return {"code": 0, "data": {"text": text}, "message": "ok"}
 
         return {"code": 0, "data": {"text": ""}, "message": "ok"}
@@ -581,6 +634,235 @@ async def transcribe_audio(
                     os.unlink(p)
                 except OSError:
                     pass
+
+
+@router.get("/{interview_id}/audio/{order_index}")
+async def get_question_audio(
+    interview_id: uuid.UUID,
+    order_index: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取预生成的 TTS 题目朗读音频"""
+    # 验证面试属于当前用户
+    result = await db.execute(
+        select(Interview).where(Interview.id == interview_id, Interview.user_id == current_user.id)
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Interview not found")
+
+    # 查询题目
+    q_result = await db.execute(
+        select(InterviewQuestion).where(
+            InterviewQuestion.interview_id == interview_id,
+            InterviewQuestion.order_index == order_index,
+        )
+    )
+    question = q_result.scalar_one_or_none()
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+
+    # 尝试从缓存路径读取
+    from app.services.audio_cache import get_cached_tts, tts_cache_key
+    from app.services.tts_service import synthesize_speech
+    from pathlib import Path
+
+    # 获取用户 TTS 偏好
+    user_result = await db.execute(select(User).where(User.id == current_user.id))
+    user = user_result.scalar_one_or_none()
+    tts_pref = user.tts_preference if user and user.tts_preference else {}
+    voice = tts_pref.get('voice', 'zh-CN-XiaoxiaoNeural')
+    speed = float(tts_pref.get('speed', 1.0))
+
+    # 先查缓存
+    audio = await get_cached_tts(question.question_text, voice, speed)
+    if audio is None:
+        # 缓存未命中，实时生成
+        try:
+            audio = await synthesize_speech(question.question_text, voice, speed)
+            if audio and len(audio) > 220:
+                from app.services.audio_cache import save_tts_cache
+                await save_tts_cache(question.question_text, voice, speed, audio)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"TTS generation failed: {e}")
+
+    if not audio:
+        raise HTTPException(status_code=404, detail="Audio not available")
+
+    return Response(content=audio, media_type="audio/mpeg")
+
+
+@router.post("/{interview_id}/question/{order_index}/favorite")
+async def toggle_question_favorite(
+    interview_id: uuid.UUID,
+    order_index: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """切换题目的收藏状态（同时维护独立的收藏表，不受面试删除影响）"""
+    from app.models.favorited_question import FavoritedQuestion
+
+    result = await db.execute(
+        select(Interview).where(Interview.id == interview_id, Interview.user_id == current_user.id)
+    )
+    if not result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Interview not found")
+
+    q_result = await db.execute(
+        select(InterviewQuestion).where(
+            InterviewQuestion.interview_id == interview_id,
+            InterviewQuestion.order_index == order_index,
+        )
+    )
+    question = q_result.scalar_one_or_none()
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+
+    # 切换标记
+    question.is_favorited = not question.is_favorited
+
+    if question.is_favorited:
+        # 收藏：将题目数据复制到独立收藏表
+        existing = await db.execute(
+            select(FavoritedQuestion).where(
+                FavoritedQuestion.user_id == current_user.id,
+                FavoritedQuestion.question_text == question.question_text,
+            )
+        )
+        if not existing.scalar_one_or_none():
+            fav = FavoritedQuestion(
+                user_id=current_user.id,
+                source_interview_id=interview_id,
+                question_text=question.question_text,
+                question_type=question.question_type,
+                reference_answer=question.reference_answer,
+                improvement_suggestion=question.improvement_suggestion,
+                ai_score=question.ai_score,
+                score_detail=question.score_detail,
+                ai_evaluation=question.ai_evaluation,
+            )
+            db.add(fav)
+    else:
+        # 取消收藏：从独立收藏表删除
+        fav_result = await db.execute(
+            select(FavoritedQuestion).where(
+                FavoritedQuestion.user_id == current_user.id,
+                FavoritedQuestion.question_text == question.question_text,
+            )
+        )
+        fav = fav_result.scalar_one_or_none()
+        if fav:
+            await db.delete(fav)
+
+    await db.commit()
+
+    return {"code": 0, "data": {"order_index": order_index, "is_favorited": question.is_favorited}, "message": "ok"}
+
+
+@router.get("/favorites/list")
+async def list_favorited_questions(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取当前用户所有收藏的题目（独立收藏表，不受面试删除影响）"""
+    from app.models.favorited_question import FavoritedQuestion
+
+    result = await db.execute(
+        select(FavoritedQuestion)
+        .where(FavoritedQuestion.user_id == current_user.id)
+        .order_by(FavoritedQuestion.created_at.desc())
+    )
+    questions = result.scalars().all()
+
+    return {
+        "code": 0,
+        "data": [
+            {
+                "id": str(q.id),
+                "source_interview_id": str(q.source_interview_id) if q.source_interview_id else None,
+                "question_text": q.question_text,
+                "question_type": q.question_type,
+                "ai_score": q.ai_score,
+                "score_detail": q.score_detail,
+                "ai_evaluation": q.ai_evaluation,
+                "reference_answer": q.reference_answer,
+                "improvement_suggestion": q.improvement_suggestion,
+                "created_at": q.created_at.isoformat(),
+            }
+            for q in questions
+        ],
+        "message": "ok",
+    }
+
+
+@router.delete("/favorites/{fav_id}")
+async def delete_favorited_question(
+    fav_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """删除单条收藏题目"""
+    from app.models.favorited_question import FavoritedQuestion
+
+    result = await db.execute(
+        select(FavoritedQuestion).where(
+            FavoritedQuestion.id == fav_id,
+            FavoritedQuestion.user_id == current_user.id,
+        )
+    )
+    fav = result.scalar_one_or_none()
+    if not fav:
+        raise HTTPException(status_code=404, detail="Favorite not found")
+
+    await db.delete(fav)
+    await db.commit()
+    return {"code": 0, "message": "ok"}
+
+
+@router.post("/favorites/backfill")
+async def backfill_favorite_scores(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """回填已有收藏题目的评分数据（从 InterviewQuestion 同步到 FavoritedQuestion）"""
+    from app.models.favorited_question import FavoritedQuestion
+    from app.models.interview_question import InterviewQuestion as IQ
+    from app.models.interview import Interview as IV
+
+    updated = 0
+    # 查找当前用户所有 ai_score 为空的收藏记录
+    fav_result = await db.execute(
+        select(FavoritedQuestion).where(
+            FavoritedQuestion.user_id == current_user.id,
+            FavoritedQuestion.ai_score == None,
+        )
+    )
+    favs = fav_result.scalars().all()
+
+    for fav in favs:
+        # 查找同文本、同用户、已评分的最新题目
+        iq_result = await db.execute(
+            select(IQ)
+            .join(IV, IQ.interview_id == IV.id)
+            .where(
+                IV.user_id == current_user.id,
+                IQ.question_text == fav.question_text,
+                IQ.ai_score != None,
+            )
+            .order_by(IQ.ai_score.desc())
+            .limit(1)
+        )
+        latest = iq_result.scalar_one_or_none()
+        if latest:
+            fav.ai_score = latest.ai_score
+            fav.score_detail = latest.score_detail
+            fav.ai_evaluation = latest.ai_evaluation
+            fav.reference_answer = latest.reference_answer
+            fav.improvement_suggestion = latest.improvement_suggestion
+            updated += 1
+
+    await db.commit()
+    return {"code": 0, "data": {"updated": updated, "total_checked": len(favs)}, "message": "ok"}
 
 
 @router.get("/{interview_id}/recording/{order_index}")
@@ -674,6 +956,7 @@ async def _interview_to_response(interview: Interview, db: AsyncSession) -> Inte
             ai_evaluation=q.ai_evaluation,
             reference_answer=q.reference_answer,
             improvement_suggestion=q.improvement_suggestion,
+            is_favorited=q.is_favorited,
         )
         for q in db_questions
     ]

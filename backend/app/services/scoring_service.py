@@ -14,6 +14,9 @@ async def score_question(
     question: InterviewQuestion,
     resume_data: dict,
     jd_data: dict,
+    api_key: str | None = None,
+    api_base: str | None = None,
+    model: str | None = None,
 ) -> dict:
     """对单道面试题进行评分（提示词从 YAML 加载）"""
 
@@ -34,7 +37,7 @@ async def score_question(
         result = await llm_chat([
             {"role": "system", "content": system},
             {"role": "user", "content": prompt},
-        ], temperature=temp)
+        ], temperature=temp, api_key=api_key, api_base=api_base, model=model)
         scores = json.loads(_clean_json(result))
         scores["content_completeness"] = 0
         scores["professionalism"] = 0
@@ -52,7 +55,7 @@ async def score_question(
     result = await llm_chat([
         {"role": "system", "content": system},
         {"role": "user", "content": prompt},
-    ], temperature=temp)
+    ], temperature=temp, api_key=api_key, api_base=api_base, model=model)
     return json.loads(_clean_json(result))
 
 
@@ -82,6 +85,9 @@ async def generate_interview_overview(
     questions: list[InterviewQuestion],
     resume_data: dict,
     jd_data: dict,
+    api_key: str | None = None,
+    api_base: str | None = None,
+    model: str | None = None,
 ) -> dict:
     """生成面试总评和简历优化建议（提示词从 YAML 加载）"""
 
@@ -126,7 +132,7 @@ async def generate_interview_overview(
     result = await llm_chat([
         {"role": "system", "content": system},
         {"role": "user", "content": prompt},
-    ], temperature=temp)
+    ], temperature=temp, api_key=api_key, api_base=api_base, model=model)
     return json.loads(_clean_json(result))
 
 
@@ -137,6 +143,13 @@ async def run_full_scoring(db: AsyncSession, interview_id: uuid.UUID) -> Intervi
     interview = i_result.scalar_one_or_none()
     if not interview:
         raise ValueError("Interview not found")
+
+    # 查找用户 LLM 配置
+    from app.models.user import User
+    from app.services.llm_client import extract_llm_config
+    u_result = await db.execute(select(User).where(User.id == interview.user_id))
+    user = u_result.scalar_one_or_none()
+    llm_key, llm_base, llm_model = extract_llm_config(user.llm_config if user else None)
 
     q_result = await db.execute(
         select(InterviewQuestion).where(InterviewQuestion.interview_id == interview_id)
@@ -157,7 +170,8 @@ async def run_full_scoring(db: AsyncSession, interview_id: uuid.UUID) -> Intervi
         if question.ai_score is not None:
             return question, None  # 已评分
         try:
-            scores = await score_question(question, resume_data, jd_data)
+            scores = await score_question(question, resume_data, jd_data,
+                api_key=llm_key, api_base=llm_base, model=llm_model)
             return question, scores
         except Exception as e:
             print(f"[Scoring] Question {question.order_index} scoring failed: {e}")
@@ -191,7 +205,8 @@ async def run_full_scoring(db: AsyncSession, interview_id: uuid.UUID) -> Intervi
 
     # Phase 3: LLM 生成文字总评（仅 overview + resume_suggestions）
     try:
-        overview = await generate_interview_overview(interview, questions, resume_data, jd_data)
+        overview = await generate_interview_overview(interview, questions, resume_data, jd_data,
+                api_key=llm_key, api_base=llm_base, model=llm_model)
         interview.ai_overview = overview.get("overview", "")
         interview.resume_suggestions = overview.get("resume_suggestions", "")
         interview.scoring_status = "done"

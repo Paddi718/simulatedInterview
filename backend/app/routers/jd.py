@@ -18,8 +18,9 @@ async def create_jd(
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        from app.services.llm_client import llm_parse_jd
-        parsed = await llm_parse_jd(data.raw_text)
+        from app.services.llm_client import llm_parse_jd, extract_llm_config
+        llm_key, llm_base, llm_model = extract_llm_config(current_user.llm_config)
+        parsed = await llm_parse_jd(data.raw_text, api_key=llm_key, api_base=llm_base, model=llm_model)
     except Exception:
         parsed = {"position": "", "requirements": [], "key_responsibilities": []}
 

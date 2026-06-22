@@ -31,8 +31,9 @@ async def upload_resume(
 
     # LLM 解析 (try real LLM first, fallback to basic extract)
     try:
-        from app.services.llm_client import llm_parse
-        parsed = await llm_parse(raw_text)
+        from app.services.llm_client import llm_parse, extract_llm_config
+        llm_key, llm_base, llm_model = extract_llm_config(current_user.llm_config)
+        parsed = await llm_parse(raw_text, api_key=llm_key, api_base=llm_base, model=llm_model)
     except Exception:
         parsed = {
             "basic": {"name": "", "education": []},

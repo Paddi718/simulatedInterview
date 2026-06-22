@@ -8,6 +8,8 @@ from app.routers import jd as jd_router
 from app.routers import interview as interview_router
 from app.routers import websocket as ws_router
 from app.routers import document as doc_router
+# 确保模型被 SQLAlchemy 识别（建表）
+import app.models.favorited_question  # noqa: F401
 
 
 @asynccontextmanager

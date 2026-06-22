@@ -8,6 +8,9 @@ async def generate_questions(
     jd_data: dict,
     difficulty: str = "mid",
     total_count: int = 10,
+    api_key: str | None = None,
+    api_base: str | None = None,
+    model: str | None = None,
 ) -> list[dict]:
     """根据简历和 JD 生成面试题目（提示词从 YAML 加载）"""
 
@@ -22,7 +25,7 @@ async def generate_questions(
     result = await llm_chat([
         {"role": "system", "content": system},
         {"role": "user", "content": prompt},
-    ], temperature=temp)
+    ], temperature=temp, api_key=api_key, api_base=api_base, model=model)
 
     result = _clean_json(result)
 

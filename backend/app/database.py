@@ -42,6 +42,8 @@ async def init_db():
             "ALTER TABLE interviews ADD COLUMN IF NOT EXISTS scoring_error TEXT",
             "ALTER TABLE interview_questions ADD COLUMN IF NOT EXISTS thinking_duration_seconds INTEGER",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS llm_config JSONB",
+            "ALTER TABLE interview_questions ADD COLUMN IF NOT EXISTS is_favorited BOOLEAN DEFAULT false",
+            "ALTER TABLE interview_questions ADD COLUMN IF NOT EXISTS tts_audio_path TEXT",
         ]:
             try:
                 await conn.execute(text(stmt))

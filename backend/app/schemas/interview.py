@@ -21,6 +21,7 @@ class QuestionItem(BaseModel):
     ai_evaluation: Optional[str] = None
     reference_answer: Optional[str] = None
     improvement_suggestion: Optional[str] = None
+    is_favorited: Optional[bool] = False
 
 
 class InterviewResponse(BaseModel):

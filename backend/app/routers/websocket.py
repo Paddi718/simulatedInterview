@@ -99,6 +99,8 @@ async def _score_single_question(db, interview_id: uuid.UUID, order_index: int) 
     from app.models.interview import Interview
     from app.models.resume import Resume
     from app.models.job_description import JobDescription
+    from app.models.user import User
+    from app.services.llm_client import extract_llm_config
 
     q_result = await db.execute(
         select(InterviewQuestion).where(
@@ -114,6 +116,7 @@ async def _score_single_question(db, interview_id: uuid.UUID, order_index: int) 
     interview = i_result.scalar_one_or_none()
 
     resume_data, jd_data = {}, {}
+    llm_key = llm_base = llm_model = None
     if interview:
         r_result = await db.execute(select(Resume).where(Resume.id == interview.resume_id))
         resume = r_result.scalar_one_or_none()
@@ -121,9 +124,13 @@ async def _score_single_question(db, interview_id: uuid.UUID, order_index: int) 
         j_result = await db.execute(select(JobDescription).where(JobDescription.id == interview.jd_id))
         jd = j_result.scalar_one_or_none()
         jd_data = jd.parsed_data if jd else {}
+        u_result = await db.execute(select(User).where(User.id == interview.user_id))
+        user_db = u_result.scalar_one_or_none()
+        llm_key, llm_base, llm_model = extract_llm_config(user_db.llm_config if user_db else None)
 
     from app.services.scoring_service import score_question
-    scores = await score_question(question, resume_data, jd_data)
+    scores = await score_question(question, resume_data, jd_data,
+        api_key=llm_key, api_base=llm_base, model=llm_model)
 
     question.ai_score = scores.get("total_score", 0)
     question.score_detail = {k: v for k, v in scores.items()

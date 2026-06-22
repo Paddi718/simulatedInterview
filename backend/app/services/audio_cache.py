@@ -65,19 +65,36 @@ async def save_tts_cache(text: str, voice: str, speed: float, audio: bytes):
     cache_path.write_bytes(audio)
 
 
-async def save_recording(interview_id: str, question_index: int, webm_bytes: bytes) -> str:
-    """保存原始录音 webm 文件，返回存储路径"""
+def save_recording_sync(interview_id: str, question_index: int, webm_bytes: bytes) -> str:
+    """同步版本：保存原始录音 webm 文件（原子写入，避免部分文件）"""
     rec_dir = _get_recording_dir(interview_id)
     rec_path = rec_dir / f"q{question_index}.webm"
-    rec_path.write_bytes(webm_bytes)
+    tmp_path = rec_dir / f"q{question_index}.webm.tmp"
+    # 先写临时文件，再 rename（原子操作），防止写入中断留下不完整文件
+    try:
+        tmp_path.write_bytes(webm_bytes)
+        tmp_path.replace(rec_path)  # 原子 rename（同文件系统内）
+    except Exception:
+        # 清理临时文件
+        try:
+            tmp_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+        raise
     return str(rec_path)
+
+
+async def save_recording(interview_id: str, question_index: int, webm_bytes: bytes) -> str:
+    """保存原始录音 webm 文件，返回存储路径"""
+    # 使用线程池避免阻塞事件循环
+    return await asyncio.to_thread(save_recording_sync, interview_id, question_index, webm_bytes)
 
 
 async def get_recording(interview_id: str, question_index: int) -> bytes | None:
     """读取已保存的录音"""
     rec_path = _get_recording_dir(interview_id) / f"q{question_index}.webm"
     if rec_path.exists() and rec_path.stat().st_size > 0:
-        return rec_path.read_bytes()
+        return await asyncio.to_thread(rec_path.read_bytes)
     return None
 
 
@@ -111,14 +128,7 @@ async def clean_expired_cache(max_age_days: int = CACHE_MAX_AGE_DAYS) -> int:
 
 async def clean_recording(interview_id: str):
     """删除指定面试的所有录音"""
+    import shutil
     rec_dir = _get_base_dir() / "recordings" / interview_id
     if rec_dir.exists():
-        for f in rec_dir.iterdir():
-            try:
-                f.unlink()
-            except OSError:
-                pass
-        try:
-            rec_dir.rmdir()
-        except OSError:
-            pass
+        await asyncio.to_thread(shutil.rmtree, str(rec_dir), ignore_errors=True)

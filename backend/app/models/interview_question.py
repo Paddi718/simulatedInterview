@@ -23,5 +23,7 @@ class InterviewQuestion(Base):
     reference_answer: Mapped[str | None] = mapped_column(Text, nullable=True)
     improvement_suggestion: Mapped[str | None] = mapped_column(Text, nullable=True)
     order_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    is_favorited: Mapped[bool] = mapped_column(default=False, server_default="false")
+    tts_audio_path: Mapped[str | None] = mapped_column(Text, nullable=True)  # 预生成的TTS音频文件路径
 
     interview = relationship("Interview", back_populates="questions")
