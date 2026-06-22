@@ -6,7 +6,8 @@ import Link from 'next/link';
 import {
   Star, Target, Brain, Zap, FileText, Sparkles,
   BookOpen, Lightbulb, Loader2, ChevronLeft, Trash2,
-  ChevronDown, Inbox, FolderOpen, Building2, Briefcase
+  ChevronDown, Inbox, FolderOpen, Building2, Briefcase,
+  MessageSquare
 } from 'lucide-react';
 import { api } from '@/lib/api';
 
@@ -29,19 +30,19 @@ interface FavCategory {
 }
 
 const TYPE_LABELS: Record<string, string> = {
-  introduction: '自我介绍',
-  behavioral: '行为面试',
-  technical: '专业技能',
-  situational: '情景题',
-  career: '职业规划',
+  introduction: '自我介绍', behavioral: '行为面试', technical: '专业技能',
+  situational: '情景题', career: '职业规划',
+  '综合分析': '综合分析', '组织管理': '组织管理', '应急应变': '应急应变',
+  '人际关系': '人际关系', '岗位认知': '岗位认知', '言语理解': '言语理解',
+  '专业知识': '专业知识',
 };
 
 const TYPE_ICONS: Record<string, typeof Star> = {
-  introduction: Sparkles,
-  behavioral: Target,
-  technical: Brain,
-  situational: Zap,
-  career: FileText,
+  introduction: Sparkles, behavioral: Target, technical: Brain,
+  situational: Zap, career: FileText,
+  '综合分析': Target, '组织管理': FileText, '应急应变': Zap,
+  '人际关系': Sparkles, '岗位认知': BookOpen, '言语理解': MessageSquare,
+  '专业知识': Brain,
 };
 
 const TYPE_COLORS: Record<string, string> = {
@@ -50,6 +51,13 @@ const TYPE_COLORS: Record<string, string> = {
   technical: 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/30 dark:text-purple-400 dark:border-purple-800',
   situational: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800',
   career: 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-800',
+  '综合分析': 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-400 dark:border-red-800',
+  '组织管理': 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-400 dark:border-blue-800',
+  '应急应变': 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/30 dark:text-orange-400 dark:border-orange-800',
+  '人际关系': 'bg-pink-50 text-pink-700 border-pink-200 dark:bg-pink-950/30 dark:text-pink-400 dark:border-pink-800',
+  '岗位认知': 'bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950/30 dark:text-teal-400 dark:border-teal-800',
+  '言语理解': 'bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-950/30 dark:text-violet-400 dark:border-violet-800',
+  '专业知识': 'bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-950/30 dark:text-cyan-400 dark:border-cyan-800',
 };
 
 export default function FavoritesPage() {
@@ -228,7 +236,24 @@ export default function FavoritesPage() {
                                 {q.question_text}
                               </span>
                             </div>
-                            <div className="flex items-center gap-3 flex-shrink-0 ml-3">
+                            <div className="flex items-center gap-1.5 flex-shrink-0 ml-3">
+                              {/* Remove favorite button */}
+                              <div className="relative group">
+                                <button
+                                  onClick={(e) => handleRemove(q.id, e)}
+                                  disabled={removingId === q.id}
+                                  className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors disabled:opacity-50"
+                                >
+                                  {removingId === q.id ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="w-4 h-4" />
+                                  )}
+                                </button>
+                                <span className="absolute -bottom-9 left-1/2 -translate-x-1/2 px-2 py-1 text-xs font-medium text-white bg-gray-800 dark:bg-gray-700 rounded-md shadow-sm opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none z-10">
+                                  取消收藏
+                                </span>
+                              </div>
                               <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
                               <ChevronDown
                                 className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${
@@ -286,21 +311,6 @@ export default function FavoritesPage() {
                                 </div>
                               )}
 
-                              {/* Remove button */}
-                              <div className="flex gap-2 pt-2 border-t border-gray-200/50 dark:border-gray-700/50">
-                                <button
-                                  onClick={(e) => handleRemove(q.id, e)}
-                                  disabled={removingId === q.id}
-                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors disabled:opacity-50"
-                                >
-                                  {removingId === q.id ? (
-                                    <Loader2 className="w-3 h-3 animate-spin" />
-                                  ) : (
-                                    <Trash2 className="w-3 h-3" />
-                                  )}
-                                  取消收藏
-                                </button>
-                              </div>
                             </div>
                           </div>
                         </div>

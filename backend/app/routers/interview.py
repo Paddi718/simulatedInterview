@@ -888,8 +888,9 @@ async def delete_favorited_question(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """删除单条收藏题目"""
+    """删除单条收藏题目，同时同步源题目的 is_favorited 状态"""
     from app.models.favorited_question import FavoritedQuestion
+    from app.models.interview_question import InterviewQuestion
 
     result = await db.execute(
         select(FavoritedQuestion).where(
@@ -900,6 +901,18 @@ async def delete_favorited_question(
     fav = result.scalar_one_or_none()
     if not fav:
         raise HTTPException(status_code=404, detail="Favorite not found")
+
+    # 同步更新源题目的收藏标记
+    if fav.source_interview_id and fav.question_text:
+        q_result = await db.execute(
+            select(InterviewQuestion).where(
+                InterviewQuestion.interview_id == fav.source_interview_id,
+                InterviewQuestion.question_text == fav.question_text,
+            )
+        )
+        src_question = q_result.scalar_one_or_none()
+        if src_question:
+            src_question.is_favorited = False
 
     await db.delete(fav)
     await db.commit()
