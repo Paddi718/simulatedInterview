@@ -747,8 +747,8 @@ function SessionContent() {
                     onClick={()=>{audioPlayingRef.current?stopTts():playQuestionAudio();}}
                     disabled={audioLoading}
                     className="flex-shrink-0 w-9 h-9 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 flex items-center justify-center disabled:opacity-40 transition-all"
-                    title={audioPlayingRef.current?'停止朗读':'朗读题目'}>
-                    {audioLoading?<Loader2 className="w-4 h-4 text-brand-500 animate-spin" />:audioPlayingRef.current?<Square className="w-4 h-4 text-brand-500" />:<Volume2 className="w-4 h-4 text-gray-500 dark:text-gray-400" />}
+                    title={ttsPlaying||audioLoading?'停止朗读':'朗读题目'}>
+                    {audioLoading?<Loader2 className="w-4 h-4 text-brand-500 animate-spin" />:ttsPlaying?<Square className="w-4 h-4 text-brand-500" />:<Volume2 className="w-4 h-4 text-gray-500 dark:text-gray-400" />}
                   </button>
                   <button onClick={toggleFavorite}
                     className={`flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center transition-all ${
@@ -808,7 +808,7 @@ function SessionContent() {
                 <p className="text-sm text-gray-400 dark:text-gray-500">准备好后，点击下方按钮开始录音回答</p>
                 <div className="relative">
                   <div className="absolute inset-0 rounded-full bg-brand-100 dark:bg-brand-950/50 animate-pulse opacity-50" />
-                  <button onClick={startRecording} disabled={audioPlayingRef.current||audioLoading}
+                  <button onClick={startRecording} disabled={ttsPlaying||audioLoading}
                     className="relative w-28 h-28 rounded-full bg-white dark:bg-gray-800 border-2 border-dashed border-brand-300 dark:border-brand-600 hover:border-brand-500 dark:hover:border-brand-500 hover:bg-brand-50 dark:hover:bg-brand-950/30 transition-all flex items-center justify-center group shadow-sm disabled:opacity-40 disabled:cursor-not-allowed">
                     <Mic className="w-12 h-12 text-brand-500 dark:text-brand-400 group-hover:scale-105 transition-transform" />
                   </button>
