@@ -555,21 +555,12 @@ function SessionContent() {
     else {setPhase('review');setShowConfirm(true);}
   },[currentIndex,questions]);
 
-  const handleSkip=useCallback(()=>{if(phase==='scoring'||phase==='submitting')return;if(phase==='recording')stopRecording();setTimeout(()=>submitAnswer('',true),300);},[phase,stopRecording,submitAnswer]);
-  // 最后一题直接完成（跳过回顾阶段，直接弹完成对话框）
-  const finishLast=useCallback(async()=>{
-    if(!interviewId||phase==='submitting')return;
-    const q=questions[currentIndex];if(!q)return;
+  // 最后一题：直接弹完成对话框，不提交、不调API、不走submitting
+  const showFinish=useCallback(()=>{
     if(phase==='recording')stopRecording();
-    setPhase('submitting');
-    try{
-      await api.post(`/api/interview/${interviewId}/submit-answer`,{
-        order_index:q.order_index, answer_transcript:'', duration_seconds:0, thinking_duration_seconds:finalThinkingTime,
-      });
-      setQuestions(prev=>prev.map((qq,i)=>i===currentIndex?{...qq,user_answer_transcript:''}:qq));
-    }catch{}
     setShowConfirm(true);
-  },[interviewId,currentIndex,questions,phase,stopRecording]);
+  },[phase,stopRecording]);
+  const handleSkip=useCallback(()=>{if(phase==='scoring'||phase==='submitting')return;if(phase==='recording')stopRecording();setTimeout(()=>submitAnswer('',true),300);},[phase,stopRecording,submitAnswer]);
   const handleComplete=useCallback(async()=>{if(!interviewId||completing)return;stopTts();stopAll();setAudioLoading(false);setCompleting(true);try{await api.post(`/api/interview/${interviewId}/complete`);router.push(`/interview/result/${interviewId}`);}catch{setCompleting(false);setError('完成失败');}},[interviewId,completing,router]);
 
   /* ---------- Render ---------- */
@@ -788,7 +779,7 @@ function SessionContent() {
                   </button>
                 </div>
                 {isLastQ ? (
-                  <button onClick={finishLast}
+                  <button onClick={showFinish}
                     className="inline-flex items-center gap-1.5 px-6 py-2.5 text-sm font-medium text-brand-500 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/30 border border-brand-200 dark:border-brand-800 rounded-xl hover:bg-brand-100 dark:hover:bg-brand-950/60 transition-all">
                     <Send className="w-4 h-4" />
                     完成面试
@@ -839,7 +830,7 @@ function SessionContent() {
                 </div>
 
                 {isLastQ ? (
-                  <button onClick={finishLast}
+                  <button onClick={showFinish}
                     className="inline-flex items-center gap-1.5 px-6 py-2.5 text-sm font-medium text-brand-500 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/30 border border-brand-200 dark:border-brand-800 rounded-xl hover:bg-brand-100 dark:hover:bg-brand-950/60 transition-all">
                     <Send className="w-4 h-4" />
                     提交并完成
@@ -896,13 +887,7 @@ function SessionContent() {
                     <RotateCcw className="w-4 h-4" />
                     重新录音
                   </button>
-                  {isLastQ ? (
-                    <button onClick={()=>submitAnswer(displayText,false)}
-                      className="inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-medium text-white bg-brand-500 rounded-xl hover:bg-brand-600 transition-all shadow-sm">
-                      <Send className="w-4 h-4" />
-                      提交并完成
-                    </button>
-                  ) : (
+                  {!isLastQ && (
                     <button onClick={handleSkip}
                       className="inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-medium text-gray-400 dark:text-gray-500 border border-gray-200 dark:border-gray-700 rounded-xl hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all">
                       <XCircle className="w-4 h-4" />
