@@ -560,8 +560,8 @@ function SessionContent() {
 
   /* ---------- Render ---------- */
   const total=questions.length,currentQ=questions[currentIndex];
-  const answeredCount = questions.filter(q => q.user_answer_transcript).length;
-  const progress = total>0 ? Math.round((answeredCount/total)*100) : 0;
+  const isLastQ = currentIndex + 1 >= total;
+  const progress = total>0 ? Math.round(((currentIndex+1)/total)*100) : 0;
   const displayText=transcript||liveText||'';
   const showTimer=recordedTime>0;
 
@@ -773,11 +773,19 @@ function SessionContent() {
                     <Mic className="w-12 h-12 text-brand-500 dark:text-brand-400 group-hover:scale-105 transition-transform" />
                   </button>
                 </div>
-                <button onClick={handleSkip}
-                  className="inline-flex items-center gap-1.5 px-6 py-2.5 text-sm font-medium text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 transition-all">
-                  <XCircle className="w-4 h-4" />
-                  跳过此题
-                </button>
+                {isLastQ ? (
+                  <button onClick={()=>submitAnswer('',true)}
+                    className="inline-flex items-center gap-1.5 px-6 py-2.5 text-sm font-medium text-brand-500 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/30 border border-brand-200 dark:border-brand-800 rounded-xl hover:bg-brand-100 dark:hover:bg-brand-950/60 transition-all">
+                    <Send className="w-4 h-4" />
+                    完成面试
+                  </button>
+                ) : (
+                  <button onClick={handleSkip}
+                    className="inline-flex items-center gap-1.5 px-6 py-2.5 text-sm font-medium text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700 transition-all">
+                    <XCircle className="w-4 h-4" />
+                    跳过此题
+                  </button>
+                )}
               </div>
             )}
 
@@ -816,11 +824,19 @@ function SessionContent() {
                   <p ref={liveTextElRef} className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{liveText}</p>
                 </div>
 
-                <button onClick={handleSkip}
-                  className="inline-flex items-center gap-1.5 px-6 py-2.5 text-sm text-gray-400 dark:text-gray-500 border border-gray-200 dark:border-gray-700 rounded-xl hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all">
-                  <XCircle className="w-4 h-4" />
-                  跳过
-                </button>
+                {isLastQ ? (
+                  <button onClick={()=>{stopRecording();setTimeout(()=>submitAnswer(liveTextRef.current||'',true),300);}}
+                    className="inline-flex items-center gap-1.5 px-6 py-2.5 text-sm font-medium text-brand-500 dark:text-brand-400 bg-brand-50 dark:bg-brand-950/30 border border-brand-200 dark:border-brand-800 rounded-xl hover:bg-brand-100 dark:hover:bg-brand-950/60 transition-all">
+                    <Send className="w-4 h-4" />
+                    提交并完成
+                  </button>
+                ) : (
+                  <button onClick={handleSkip}
+                    className="inline-flex items-center gap-1.5 px-6 py-2.5 text-sm text-gray-400 dark:text-gray-500 border border-gray-200 dark:border-gray-700 rounded-xl hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all">
+                    <XCircle className="w-4 h-4" />
+                    跳过
+                  </button>
+                )}
               </div>
             )}
 
@@ -866,11 +882,19 @@ function SessionContent() {
                     <RotateCcw className="w-4 h-4" />
                     重新录音
                   </button>
-                  <button onClick={handleSkip}
-                    className="inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-medium text-gray-400 dark:text-gray-500 border border-gray-200 dark:border-gray-700 rounded-xl hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all">
-                    <XCircle className="w-4 h-4" />
-                    跳过
-                  </button>
+                  {isLastQ ? (
+                    <button onClick={()=>submitAnswer(displayText,false)}
+                      className="inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-medium text-white bg-brand-500 rounded-xl hover:bg-brand-600 transition-all shadow-sm">
+                      <Send className="w-4 h-4" />
+                      提交并完成
+                    </button>
+                  ) : (
+                    <button onClick={handleSkip}
+                      className="inline-flex items-center justify-center gap-2 px-6 py-3 text-sm font-medium text-gray-400 dark:text-gray-500 border border-gray-200 dark:border-gray-700 rounded-xl hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-all">
+                      <XCircle className="w-4 h-4" />
+                      跳过
+                    </button>
+                  )}
                 </div>
               </div>
             )}
