@@ -36,8 +36,8 @@ class SearchOrchestrator:
     async def search(self, province: str, max_results: int = 5) -> str:
         """搜索省份热点，返回格式化文本供 prompt 注入。全部失败返回 ''"""
         queries = [
-            f"{province} 时政热点 政策 新闻 site:gov.cn",
-            f"{province} 2026 民生工程 改革举措",
+            f"{province} 2026年 时政 热点新闻",
+            f"{province} 政府工作报告 高质量发展 民生",
         ]
 
         for provider in self.providers:
