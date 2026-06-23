@@ -22,8 +22,10 @@ class Settings(BaseSettings):
 
     # TTS (Edge TTS — free, no API key required)
 
-    # Bing Search (用于公务员/事业单位面试热点搜索，可选)
-    bing_search_api_key: str = ""
+    # 搜索（公务员/事业单位面试热点 — 多源兜底）
+    search_serper_api_key: str = ""       # Serper: https://serper.dev
+    search_tavily_api_key: str = ""       # Tavily: https://app.tavily.com
+    search_searxng_url: str = ""          # SearXNG: 自部署 http://host:8080
 
     # LLM
     llm_api_key: str = ""

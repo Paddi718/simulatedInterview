@@ -1,8 +1,6 @@
 import json
-import httpx
 from app.services.llm_client import llm_chat, _clean_json
 from app.prompts import load_prompt
-from app.config import get_settings
 
 
 def _parse_questions(result: str, total_count: int) -> list[dict]:
@@ -97,48 +95,18 @@ async def stream_questions(chunks, total_count: int):
 
 async def _search_hot_events(province: str) -> str:
     """搜索省份近期热点事件，用于公务员/事业单位面试出题。
-    返回格式化的热点文本，搜索失败或未配置 API Key 时返回空字符串。
-    """
-    settings = get_settings()
-    api_key = settings.bing_search_api_key
-    if not api_key:
-        return ""
 
-    queries = [
-        f"{province} 2026 时政热点 最新政策",
-        f"{province} 政府工作报告 民生实事 改革举措",
-    ]
-    all_results = []
+    按 SEARCH_PROVIDERS 顺序链式调用 Serper → Tavily → SearXNG，
+    第一个有结果即返回。全部失败或未配置任何搜索源时返回空字符串。
+    """
+    from app.services.search.orchestrator import get_orchestrator
 
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            for q in queries:
-                try:
-                    resp = await client.get(
-                        "https://api.bing.microsoft.com/v7.0/search",
-                        headers={"Ocp-Apim-Subscription-Key": api_key},
-                        params={"q": q, "count": 3, "mkt": "zh-CN", "freshness": "Week"},
-                    )
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        for item in data.get("webPages", {}).get("value", [])[:3]:
-                            all_results.append({
-                                "title": item.get("name", ""),
-                                "snippet": item.get("snippet", ""),
-                            })
-                except Exception:
-                    continue
+        orchestrator = get_orchestrator()
+        result = await orchestrator.search(province, max_results=5)
+        return result
     except Exception:
-        pass
-
-    if not all_results:
         return ""
-
-    # 格式化为 prompt 可用的文本
-    lines = []
-    for i, r in enumerate(all_results[:5], 1):
-        lines.append(f"{i}. {r['title']}\n   {r['snippet']}")
-    return "\n".join(lines)
 
 
 async def generate_questions(
