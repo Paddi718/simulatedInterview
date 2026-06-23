@@ -105,8 +105,8 @@ async def _search_hot_events(province: str) -> str:
         return ""
 
     queries = [
-        f"{province} 时政热点 公务员面试",
-        f"{province} 政府工作报告 重点工作 民生",
+        f"{province} 2026 时政热点 最新政策",
+        f"{province} 政府工作报告 民生实事 改革举措",
     ]
     all_results = []
 
@@ -117,7 +117,7 @@ async def _search_hot_events(province: str) -> str:
                     resp = await client.get(
                         "https://api.bing.microsoft.com/v7.0/search",
                         headers={"Ocp-Apim-Subscription-Key": api_key},
-                        params={"q": q, "count": 3, "mkt": "zh-CN", "freshness": "Month"},
+                        params={"q": q, "count": 3, "mkt": "zh-CN", "freshness": "Week"},
                     )
                     if resp.status_code == 200:
                         data = resp.json()
@@ -180,6 +180,8 @@ async def generate_questions_civil_service(
 ) -> list[dict]:
     """生成公务员结构化面试题（结合省情+热点）"""
 
+    from datetime import datetime
+
     # 搜索近期热点事件（非阻塞，失败也不影响出题）
     hot_events = await _search_hot_events(province)
 
@@ -191,6 +193,7 @@ async def generate_questions_civil_service(
         position_category=position_category,
         position_name=position_name,
         hot_events=hot_events,
+        current_date=datetime.now().strftime("%Y 年 %m 月"),
     )
 
     result = await llm_chat([
@@ -215,6 +218,8 @@ async def generate_questions_institution(
 ) -> list[dict]:
     """生成事业单位面试题（可选简历/JD，结合省情+热点）"""
 
+    from datetime import datetime
+
     # 搜索近期热点事件
     hot_events = await _search_hot_events(province)
 
@@ -228,6 +233,7 @@ async def generate_questions_institution(
         hot_events=hot_events,
         resume_data_json=resume_data or {},
         jd_data_json=jd_data or {},
+        current_date=datetime.now().strftime("%Y 年 %m 月"),
     )
 
     result = await llm_chat([

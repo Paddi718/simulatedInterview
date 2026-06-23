@@ -222,6 +222,7 @@ prompts:
     system: civil_service_interviewer
     template: |
       你是一位公务员面试考官。请为{{ province }}公务员面试生成 {{ total_count }} 道结构化面试题。
+      当前日期：{{ current_date }}
 
       面试层级：{{ level }}
       岗位类别：{{ position_category }}
@@ -230,8 +231,10 @@ prompts:
       {{ province }}省情概要：请结合{{ province }}的经济社会发展特点、重大战略部署、政府重点工作方向出题。
 
       {% if hot_events %}
-      近期热点事件（请融入题目场景）：
+      以下是{{ province }}近期时政热点事件，请务必融入题目场景：
       {{ hot_events }}
+      {% else %}
+      请基于你掌握的最新时政知识（截止{{ current_date }}），围绕{{ province }}近一年内的重大政策、民生工程、改革举措设计题目场景，确保题目贴近当前政治经济形势。
       {% endif %}
 
       题目类型分配：
@@ -245,7 +248,7 @@ prompts:
       输出 JSON 数组：
       [
         {
-          "question_text": "题目内容（应结合省情和热点，有具体场景）",
+          "question_text": "题目内容（必须包含具体省份、年份、政策名称，杜绝泛泛而谈）",
           "question_type": "综合分析|组织管理|应急应变|人际关系",
           "examine_point": "考察的能力点"
         }
@@ -366,6 +369,7 @@ prompts:
     system: institution_interviewer
     template: |
       你是一位事业单位招聘面试官。请为{{ province }}事业单位面试生成 {{ total_count }} 道面试题。
+      当前日期：{{ current_date }}
 
       面试层级：{{ level }}
       岗位类别：{{ position_category }}
@@ -374,8 +378,10 @@ prompts:
       {{ province }}省情概要：请结合{{ province }}的经济社会发展、事业单位改革方向出题。
 
       {% if hot_events %}
-      近期热点事件（请融入题目场景）：
+      以下是{{ province }}近期时政热点事件，请务必融入题目场景：
       {{ hot_events }}
+      {% else %}
+      请基于你掌握的最新时政知识（截止{{ current_date }}），围绕{{ province }}近一年内的重大政策、民生工程、事业单位改革动态设计题目场景，确保题目贴近当前形势。
       {% endif %}
 
       {% if resume_data_json and resume_data_json != '{}' %}
