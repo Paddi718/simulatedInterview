@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   Check, FileText, Upload, Loader2, Brain, Target, Zap,
   ChevronRight, ChevronLeft, AlertCircle, ClipboardList, Trash2,
-  Landmark, Building2, Briefcase, Search, ChevronDown
+  Landmark, Building2, Briefcase, Search, ChevronDown, Settings, X
 } from 'lucide-react';
 import { api } from '@/lib/api';
 
@@ -103,6 +103,7 @@ export default function PreparePage() {
   const [deletingJdId, setDeletingJdId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [hasLlmKey, setHasLlmKey] = useState(true);  // 默认true避免闪烁
+  const [showLlmDialog, setShowLlmDialog] = useState(false);
 
   // Click outside handler for province dropdown
   useEffect(() => {
@@ -207,6 +208,11 @@ export default function PreparePage() {
 
   const handleStart = async () => {
     if (!category) return;
+
+    if (!hasLlmKey) {
+      setShowLlmDialog(true);
+      return;
+    }
 
     setLoading(true);
     setError('');
@@ -1062,6 +1068,63 @@ export default function PreparePage() {
               </div>
               <p className="text-gray-900 dark:text-gray-100 font-semibold text-lg mb-1">正在创建面试</p>
               <p className="text-gray-400 dark:text-gray-500 text-sm">正在根据选择生成面试题目...</p>
+            </div>
+          </div>
+        )}
+
+        {/* LLM Key 未配置弹窗 */}
+        {showLlmDialog && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 dark:bg-black/60 backdrop-blur-sm">
+            <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl max-w-md w-full mx-4 overflow-hidden animate-fade-in border border-gray-100 dark:border-gray-800">
+              {/* Header */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-800">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                    <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                  </div>
+                  <h3 className="font-semibold text-gray-900 dark:text-gray-100">
+                    未配置 API Key
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setShowLlmDialog(false)}
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="px-6 py-4">
+                <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+                  AI 模拟面试需要调用大语言模型来<strong className="text-gray-800 dark:text-gray-200">智能出题</strong>和<strong className="text-gray-800 dark:text-gray-200">多维评分</strong>。
+                  请先配置你的 DeepSeek API Key，费用由你自己的 API 账户承担。
+                </p>
+                <div className="mt-4 p-3 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700/50">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    <span className="font-medium text-gray-700 dark:text-gray-300">如何获取？</span><br />
+                    前往 <code className="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded text-xs">platform.deepseek.com</code> 注册并创建 API Key，
+                    复制后粘贴到设置页面即可。
+                  </p>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-800 flex gap-3">
+                <button
+                  onClick={() => setShowLlmDialog(false)}
+                  className="flex-1 py-2.5 px-4 rounded-xl text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+                >
+                  稍后再说
+                </button>
+                <button
+                  onClick={() => router.push('/settings')}
+                  className="flex-1 py-2.5 px-4 rounded-xl text-sm font-medium text-white bg-brand-500 hover:bg-brand-600 active:bg-brand-800 transition-colors shadow-sm flex items-center justify-center gap-1.5"
+                >
+                  <Settings className="w-4 h-4" />
+                  去配置 API Key
+                </button>
+              </div>
             </div>
           </div>
         )}
