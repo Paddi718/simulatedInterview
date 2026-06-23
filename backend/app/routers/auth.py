@@ -112,7 +112,7 @@ async def forgot_password(data: dict, db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=400, detail="该账号邮箱未验证，无法重置密码")
 
     from app.services.email_service import send_verification_email
-    code = await send_verification_email(user.email)
+    code = await send_verification_email(user.email, scenario="reset")
     if not code:
         raise HTTPException(status_code=500, detail="发送验证码失败")
 
