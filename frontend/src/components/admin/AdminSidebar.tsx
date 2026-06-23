@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   Users,
   FileText,
+  Settings,
   ArrowLeft,
   LogOut,
   Shield,
@@ -20,6 +21,7 @@ const adminNavItems = [
   { label: '管理仪表盘', href: '/admin/dashboard', icon: LayoutDashboard },
   { label: '用户管理', href: '/admin/users', icon: Users },
   { label: '面试管理', href: '/admin/interviews', icon: FileText },
+  { label: '系统配置', href: '/admin/settings', icon: Settings },
 ];
 
 export default function AdminSidebar() {

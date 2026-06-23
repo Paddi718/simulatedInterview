@@ -299,3 +299,63 @@ async def admin_delete_interview(
     await db.delete(intv)
     await db.commit()
     return {"code": 0, "message": "面试记录已删除", "data": None}
+
+
+# ── System Config ───────────────────────────────────────────────
+
+@router.get("/config")
+async def admin_get_config(
+    current_user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取所有系统配置（敏感值脱敏）"""
+    result = await db.execute(text("SELECT key, value FROM system_configs ORDER BY key"))
+    rows = result.fetchall()
+    configs: dict[str, str] = {}
+    for key, value in rows:
+        # API Key 类脱敏显示
+        if "api_key" in key and value:
+            configs[key] = value[:6] + "***" + value[-4:] if len(value) > 10 else "***"
+        else:
+            configs[key] = value
+    return {"code": 0, "data": configs, "message": "ok"}
+
+
+@router.put("/config")
+async def admin_update_config(
+    data: dict,
+    current_user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """批量更新系统配置。data = {key: value, ...}"""
+    allowed_keys = {
+        "search_serper_api_key", "search_tavily_api_key",
+        "search_searxng_url", "search_providers",
+    }
+    for key, value in data.items():
+        if key not in allowed_keys:
+            continue
+        await db.execute(
+            text(
+                "INSERT INTO system_configs (key, value) VALUES (:k, :v) "
+                "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()"
+            ),
+            {"k": key, "v": str(value) if value else ""},
+        )
+    await db.commit()
+    return {"code": 0, "message": "配置已保存", "data": None}
+
+
+@router.post("/config/test-search")
+async def admin_test_search(
+    current_user: User = Depends(require_admin),
+):
+    """测试搜索功能 — 用"广东省"测试并返回各 provider 状态"""
+    from app.services.search.orchestrator import get_orchestrator
+    orch = get_orchestrator()
+    text = await orch.search("广东省", max_results=3)
+    return {
+        "code": 0,
+        "data": {"result": text[:500] if text else "(无结果 — 所有搜索源不可用)"},
+        "message": "ok",
+    }

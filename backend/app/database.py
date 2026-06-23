@@ -55,6 +55,12 @@ async def init_db():
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT false",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ",
+            # 系统配置表（搜索Key等由管理员在UI配置）
+            """CREATE TABLE IF NOT EXISTS system_configs (
+                key VARCHAR(100) PRIMARY KEY,
+                value TEXT DEFAULT '',
+                updated_at TIMESTAMPTZ DEFAULT NOW()
+            )""",
         ]:
             try:
                 await conn.execute(text(stmt))
