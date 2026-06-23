@@ -1,63 +1,60 @@
-'use client'
+'use client';
 
-import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
-  PlayCircle,
-  History,
+  Users,
   FileText,
-  Settings,
+  ArrowLeft,
   LogOut,
-  Briefcase,
-  Moon,
-  Sun,
+  Shield,
   ChevronLeft,
   Menu,
-  Star,
-  Shield,
-} from 'lucide-react'
-import { cn } from '@/lib/utils'
-import { useTheme } from './ThemeProvider'
-import { useAuthStore } from '@/store/authStore'
-import { useState } from 'react'
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { useAuthStore } from '@/store/authStore';
+import { useState } from 'react';
 
-const navItems = [
-  { label: '仪表盘', href: '/dashboard', icon: LayoutDashboard },
-  { label: '开始面试', href: '/interview/prepare', icon: PlayCircle },
-  { label: '历史记录', href: '/history', icon: History },
-  { label: '简历管理', href: '/resume', icon: FileText },
-  { label: '收藏题目', href: '/favorites', icon: Star },
-]
+const adminNavItems = [
+  { label: '管理仪表盘', href: '/admin/dashboard', icon: LayoutDashboard },
+  { label: '用户管理', href: '/admin/users', icon: Users },
+  { label: '面试管理', href: '/admin/interviews', icon: FileText },
+];
 
-export default function Sidebar() {
-  const pathname = usePathname()
-  const { theme, toggleTheme } = useTheme()
-  const user = useAuthStore((s) => s.user)
-  const [mobileOpen, setMobileOpen] = useState(false)
+export default function AdminSidebar() {
+  const pathname = usePathname();
+  const router = useRouter();
+  const logout = useAuthStore((s) => s.logout);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const isActive = (href: string) => {
-    if (href === '/dashboard') return pathname === '/dashboard'
-    return pathname.startsWith(href)
-  }
+    if (href === '/admin/dashboard') return pathname === '/admin/dashboard';
+    return pathname.startsWith(href);
+  };
+
+  const handleLogout = () => {
+    logout();
+    router.push('/login');
+  };
 
   const sidebarContent = (
     <div className="flex h-full flex-col">
       {/* Logo */}
       <div className="flex h-14 items-center gap-2.5 px-5 border-b border-gray-100 dark:border-gray-800">
-        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-500 text-white">
-          <Briefcase className="h-3.5 w-3.5" strokeWidth={1.5} />
+        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-purple-500 text-white">
+          <Shield className="h-3.5 w-3.5" strokeWidth={1.5} />
         </div>
         <span className="font-semibold text-sm text-gray-900 dark:text-gray-100 tracking-tight">
-          AI 模拟面试
+          管理后台
         </span>
       </div>
 
       {/* Navigation */}
       <nav className="flex-1 space-y-1 px-3 py-4">
-        {navItems.map((item) => {
-          const Icon = item.icon
-          const active = isActive(item.href)
+        {adminNavItems.map((item) => {
+          const Icon = item.icon;
+          const active = isActive(item.href);
           return (
             <Link
               key={item.href}
@@ -73,51 +70,22 @@ export default function Sidebar() {
               <Icon className="h-4 w-4 shrink-0" strokeWidth={1.5} />
               <span>{item.label}</span>
             </Link>
-          )
+          );
         })}
       </nav>
 
-      {/* Bottom section */}
+      {/* Bottom */}
       <div className="border-t border-gray-100 dark:border-gray-800 px-3 py-3 space-y-1">
-        {/* Admin entry — only visible to admins */}
-        {user?.is_admin && (
-          <Link
-            href="/admin/dashboard"
-            className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-purple-600 transition-colors hover:bg-purple-50 dark:text-purple-400 dark:hover:bg-purple-950"
-          >
-            <Shield className="h-4 w-4 shrink-0" strokeWidth={1.5} />
-            <span>管理后台</span>
-          </Link>
-        )}
-
-        {/* Settings */}
         <Link
-          href="/settings"
+          href="/dashboard"
           className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
         >
-          <Settings className="h-4 w-4 shrink-0" strokeWidth={1.5} />
-          <span>设置</span>
+          <ArrowLeft className="h-4 w-4 shrink-0" strokeWidth={1.5} />
+          <span>返回主站</span>
         </Link>
 
-        {/* Theme toggle */}
         <button
-          onClick={toggleTheme}
-          className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800"
-        >
-          {theme === 'dark' ? (
-            <Sun className="h-4 w-4 shrink-0" strokeWidth={1.5} />
-          ) : (
-            <Moon className="h-4 w-4 shrink-0" strokeWidth={1.5} />
-          )}
-          <span>{theme === 'dark' ? '浅色模式' : '深色模式'}</span>
-        </button>
-
-        {/* Logout */}
-        <button
-          onClick={() => {
-            localStorage.removeItem('access_token');
-            window.location.href = '/login';
-          }}
+          onClick={handleLogout}
           className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-gray-400 transition-colors hover:bg-gray-100 hover:text-red-500 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-red-400"
         >
           <LogOut className="h-4 w-4 shrink-0" strokeWidth={1.5} />
@@ -125,7 +93,7 @@ export default function Sidebar() {
         </button>
       </div>
     </div>
-  )
+  );
 
   return (
     <>
@@ -133,7 +101,7 @@ export default function Sidebar() {
       <button
         onClick={() => setMobileOpen(true)}
         className="fixed left-4 top-3 z-40 flex h-9 w-9 items-center justify-center rounded-lg bg-white shadow-sm border border-gray-200 text-gray-600 md:hidden dark:bg-gray-900 dark:border-gray-700 dark:text-gray-400"
-        aria-label="打开菜单"
+        aria-label="打开管理菜单"
       >
         <Menu className="h-4 w-4" />
       </button>
@@ -146,7 +114,7 @@ export default function Sidebar() {
         />
       )}
 
-      {/* Mobile sidebar drawer */}
+      {/* Mobile drawer */}
       <aside
         className={cn(
           'fixed inset-y-0 left-0 z-50 w-60 bg-white border-r border-gray-200 shadow-lg transition-transform duration-300 ease-in-out md:hidden dark:bg-gray-900 dark:border-gray-800',
@@ -154,7 +122,6 @@ export default function Sidebar() {
         )}
       >
         {sidebarContent}
-        {/* Close button */}
         <button
           onClick={() => setMobileOpen(false)}
           className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-300"
@@ -169,5 +136,5 @@ export default function Sidebar() {
         {sidebarContent}
       </aside>
     </>
-  )
+  );
 }

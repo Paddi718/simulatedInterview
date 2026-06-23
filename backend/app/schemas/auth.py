@@ -23,6 +23,7 @@ class UserResponse(BaseModel):
     email: str | None = None
     tts_preference: dict | None = None
     llm_config: dict | None = None
+    is_admin: bool = False
     created_at: str
 
     class Config:

@@ -51,6 +51,10 @@ async def init_db():
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT false",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_code VARCHAR(6)",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_code_expires_at TIMESTAMPTZ",
+            # 管理后台
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT false",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ",
         ]:
             try:
                 await conn.execute(text(stmt))
@@ -97,3 +101,27 @@ async def init_db():
                 await conn.execute(text(fk_sql))
             except Exception:
                 pass
+
+        # 创建首个管理员（通过环境变量配置）
+        import os
+        from app.utils.auth import hash_password
+        admin_user = os.getenv("FIRST_ADMIN_USERNAME")
+        admin_pass = os.getenv("FIRST_ADMIN_PASSWORD")
+        if admin_user and admin_pass:
+            from sqlalchemy import select
+            from app.models.user import User
+            result = await conn.execute(
+                select(User).where(User.username == admin_user)
+            )
+            if not result.scalar_one_or_none():
+                conn2 = await engine.connect()
+                await conn2.execute(
+                    text(
+                        "INSERT INTO users (id, username, password_hash, email, is_admin, is_active, is_verified) "
+                        "VALUES (gen_random_uuid(), :u, :p, :e, true, true, true)"
+                    ),
+                    {"u": admin_user, "p": hash_password(admin_pass), "e": os.getenv("FIRST_ADMIN_EMAIL", "")},
+                )
+                await conn2.commit()
+                await conn2.close()
+                print(f"[Init] Admin user '{admin_user}' created")

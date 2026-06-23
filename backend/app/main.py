@@ -10,6 +10,7 @@ from app.routers import jd as jd_router
 from app.routers import interview as interview_router
 from app.routers import websocket as ws_router
 from app.routers import document as doc_router
+from app.routers import admin as admin_router
 # 确保模型被 SQLAlchemy 识别（建表）
 import app.models.favorited_question  # noqa: F401
 
@@ -118,6 +119,7 @@ app.include_router(jd_router.router)
 app.include_router(interview_router.router)
 app.include_router(ws_router.router)
 app.include_router(doc_router.router)
+app.include_router(admin_router.router)
 
 
 @app.get("/api/health")

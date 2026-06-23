@@ -19,6 +19,9 @@ class User(Base):
     is_verified: Mapped[bool] = mapped_column(default=False)
     verification_code: Mapped[str | None] = mapped_column(String(6), nullable=True, default=None)
     verification_code_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    is_admin: Mapped[bool] = mapped_column(default=False)
+    is_active: Mapped[bool] = mapped_column(default=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     resumes = relationship("Resume", back_populates="user", cascade="all, delete-orphan")
