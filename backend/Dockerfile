@@ -30,11 +30,17 @@ ARG PIP_MIRROR=
 COPY requirements.txt .
 
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir torch torchaudio --index-url https://download.pytorch.org/whl/cpu \
-    && if [ -n "$PIP_MIRROR" ]; then \
-        pip install --no-cache-dir -i "$PIP_MIRROR" -r requirements.txt; \
+    pip install --no-cache-dir --retries 5 --timeout 60 \
+        torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+
+RUN --mount=type=cache,target=/root/.cache/pip \
+    if [ -n "$PIP_MIRROR" ]; then \
+        pip install --no-cache-dir --retries 5 --timeout 60 \
+            -i "$PIP_MIRROR" --extra-index-url https://pypi.org/simple \
+            -r requirements.txt; \
     else \
-        pip install --no-cache-dir -r requirements.txt; \
+        pip install --no-cache-dir --retries 5 --timeout 60 \
+            -r requirements.txt; \
     fi
 
 # 源码
