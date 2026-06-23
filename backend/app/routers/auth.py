@@ -135,7 +135,9 @@ async def reset_password(data: dict, db: AsyncSession = Depends(get_db)):
     if len(new_password) < 6:
         raise HTTPException(status_code=400, detail="新密码至少 6 位")
 
-    result = await db.execute(select(User).where(User.username == username))
+    result = await db.execute(
+        select(User).where((User.username == username) | (User.email == username))
+    )
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=400, detail="用户不存在")
