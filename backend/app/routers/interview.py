@@ -514,6 +514,9 @@ async def create_interview(
     default_count = {"civil_service": 3, "institution": 5}.get(category, 10)
     total_count = data.question_count or default_count
 
+    from datetime import datetime
+    current_date = datetime.now().strftime("%Y 年 %m 月")
+
     if category == "civil_service":
         # 预搜索热点（异步但不阻塞返回）
         from app.services.question_generator import _search_hot_events
@@ -526,6 +529,7 @@ async def create_interview(
             "position_name": cfg.get("position_name", ""),
             "hot_events": hot_events,
             "total_count": total_count,
+            "current_date": current_date,
         }
     elif category == "institution":
         from app.services.question_generator import _search_hot_events
@@ -540,6 +544,7 @@ async def create_interview(
             "resume_data_json": resume_data or {},
             "jd_data_json": jd_data or {},
             "total_count": total_count,
+            "current_date": current_date,
         }
     else:
         prompt_name = "generate_questions"
