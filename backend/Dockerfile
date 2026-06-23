@@ -35,8 +35,9 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 RUN --mount=type=cache,target=/root/.cache/pip \
     if [ -n "$PIP_MIRROR" ]; then \
-        pip install --no-cache-dir --retries 5 --timeout 60 \
-            -i "$PIP_MIRROR" --extra-index-url https://pypi.org/simple \
+        pip install --no-cache-dir --retries 5 --timeout 120 \
+            --index-url "$PIP_MIRROR" \
+            --trusted-host mirrors.cloud.tencent.com \
             -r requirements.txt; \
     else \
         pip install --no-cache-dir --retries 5 --timeout 60 \
