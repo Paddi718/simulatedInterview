@@ -207,6 +207,7 @@ def _user_response(user: User) -> UserResponse:
         email=user.email,
         tts_preference=user.tts_preference,
         llm_config=safe_llm,
+        is_admin=user.is_admin,
         created_at=user.created_at.isoformat(),
     )
 
