@@ -49,33 +49,43 @@ const CATEGORY_COLORS: Record<string, string> = {
   institution: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400',
 };
 
-type DifficultyFilter = 'all' | 'easy' | 'medium' | 'hard';
+type CategoryFilter = 'all' | 'private_enterprise' | 'civil_service' | 'institution';
+type SubFilter = string; // 动态值（difficulty / province / position_category / level）
 
 const difficultyLabels: Record<string, string> = {
-  easy: '初级',
-  mid: '中级',
-  medium: '中级',
-  hard: '高级',
+  easy: '初级', mid: '中级', medium: '中级', hard: '高级',
 };
 
 const difficultyBarColor: Record<string, string> = {
-  easy: 'bg-green-500',
-  mid: 'bg-yellow-500',
-  medium: 'bg-yellow-500',
-  hard: 'bg-red-500',
+  easy: 'bg-green-500', mid: 'bg-yellow-500', medium: 'bg-yellow-500', hard: 'bg-red-500',
 };
 
 const categoryBarColor: Record<string, string> = {
-  civil_service: 'bg-red-500',
-  institution: 'bg-emerald-500',
+  civil_service: 'bg-red-500', institution: 'bg-emerald-500',
 };
 
-const difficultyFilters: { key: DifficultyFilter; label: string }[] = [
+const categoryFilters: { key: CategoryFilter; label: string }[] = [
   { key: 'all', label: '全部' },
-  { key: 'easy', label: '初级' },
-  { key: 'medium', label: '中级' },
-  { key: 'hard', label: '高级' },
+  { key: 'private_enterprise', label: '私企' },
+  { key: 'civil_service', label: '公务员' },
+  { key: 'institution', label: '事业单位' },
 ];
+
+// 从记录中动态提取子筛选选项
+function getSubFilters(records: InterviewRecord[], category: CategoryFilter): { key: string; label: string }[] {
+  if (category === 'all') return [{ key: 'all', label: '全部' }];
+
+  if (category === 'private_enterprise') {
+    const seen = new Set<string>();
+    records.forEach(r => { if ((r.category === category || !r.category) && r.difficulty) seen.add(r.difficulty); });
+    return [{ key: 'all', label: '全部难度' }, ...Array.from(seen).map(d => ({ key: d, label: difficultyLabels[d] || d }))];
+  }
+
+  // 公务员/事业单位：按省份筛
+  const seen = new Set<string>();
+  records.forEach(r => { if (r.category === category && r.category_config?.province) seen.add(r.category_config.province); });
+  return [{ key: 'all', label: '全部省份' }, ...Array.from(seen).map(p => ({ key: p, label: p }))];
+}
 
 // ── Skeleton loading state ────────────────────────────────────
 
@@ -150,7 +160,8 @@ function HistoryPageContent() {
   const [loading, setLoading] = useState(true);
   const [retrying, setRetrying] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
-  const [filter, setFilter] = useState<DifficultyFilter>('all');
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
+  const [subFilter, setSubFilter] = useState<string>('all');
 
   useEffect(() => {
     const token = localStorage.getItem('access_token');
@@ -251,10 +262,28 @@ function HistoryPageContent() {
 
   // ── Helpers ────────────────────────────────────────────────
 
-  const filteredRecords =
-    filter === 'all'
-      ? records
-      : records.filter((r) => r.difficulty === filter);
+  // 两级筛选
+  const filteredRecords = (() => {
+    let result = records;
+
+    // 第一级：面试类别
+    if (categoryFilter !== 'all') {
+      result = result.filter(r => r.category === categoryFilter);
+    }
+
+    // 第二级：动态子筛选
+    if (subFilter !== 'all') {
+      if (categoryFilter === 'private_enterprise' || (!categoryFilter && result.length)) {
+        result = result.filter(r => r.difficulty === subFilter);
+      } else if (categoryFilter === 'civil_service' || categoryFilter === 'institution') {
+        result = result.filter(r => r.category_config?.province === subFilter);
+      }
+    }
+
+    return result;
+  })();
+
+  const subFilters = getSubFilters(records, categoryFilter);
 
   const deleteTargetRecord = deleteTarget
     ? records.find((r) => r.id === deleteTarget) ?? null
@@ -314,15 +343,15 @@ function HistoryPageContent() {
           </div>
         </div>
 
-        {/* ── Difficulty Filter ──────────────────────────── */}
-        <div className="flex items-center gap-2 mb-6">
-          {difficultyFilters.map((f) => (
+        {/* ── Category Filter ──────────────────────────── */}
+        <div className="flex items-center gap-2 mb-3">
+          {categoryFilters.map((f) => (
             <button
               key={f.key}
-              onClick={() => setFilter(f.key)}
+              onClick={() => { setCategoryFilter(f.key); setSubFilter('all'); }}
               className={cn(
                 'px-4 py-1.5 rounded-xl text-sm font-medium transition-all duration-200',
-                filter === f.key
+                categoryFilter === f.key
                   ? 'bg-gray-900 text-white dark:bg-gray-100 dark:text-gray-900 shadow-sm'
                   : 'bg-white text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:bg-gray-900/60 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-800 border border-gray-200 dark:border-gray-800'
               )}
@@ -331,6 +360,29 @@ function HistoryPageContent() {
             </button>
           ))}
         </div>
+
+        {/* ── Sub Filter ──────────────────────────────── */}
+        {subFilters.length > 1 && (
+          <div className="flex items-center gap-1.5 mb-6 flex-wrap">
+            {subFilters.map((f) => (
+              <button
+                key={f.key}
+                onClick={() => setSubFilter(f.key)}
+                className={cn(
+                  'px-3 py-1 rounded-lg text-xs font-medium transition-all duration-200',
+                  subFilter === f.key
+                    ? 'bg-brand-500 text-white shadow-sm'
+                    : 'bg-white text-gray-500 hover:text-gray-700 hover:bg-gray-100 dark:bg-gray-900/60 dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-800 border border-gray-200 dark:border-gray-800'
+                )}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* 无子筛选时占位间距 */}
+        {subFilters.length <= 1 && <div className="mb-3" />}
 
         {/* ── Interview List or Empty State ──────────────── */}
         {filteredRecords.length === 0 ? (
