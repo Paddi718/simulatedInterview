@@ -295,13 +295,19 @@ export default function SettingsPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                邮箱 <span className="text-gray-400 font-normal">（选填）</span>
+                邮箱 {user?.email ? <span className="text-green-600 dark:text-green-400 font-normal text-xs ml-1">✓ 已验证</span> : <span className="text-gray-400 font-normal">（选填）</span>}
               </label>
               <input
                 type="email" value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="example@mail.com"
-                className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all"
+                placeholder={user?.email ? "" : "example@mail.com"}
+                disabled={!!user?.email}
+                className={cn(
+                  "w-full px-3 py-2 rounded-lg border text-sm outline-none transition-all",
+                  user?.email
+                    ? "bg-gray-100 dark:bg-gray-800/50 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-gray-700 cursor-not-allowed"
+                    : "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 border-gray-200 dark:border-gray-700 focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500"
+                )}
               />
             </div>
             <div className="flex items-center justify-between">

@@ -142,7 +142,16 @@ export default function LoginPage() {
             </button>
           </form>
 
-          <p className="mt-8 text-center text-sm text-gray-500 dark:text-gray-400">
+          <p className="mt-6 text-center text-sm">
+            <Link
+              href="/forgot-password"
+              className="text-gray-400 hover:text-brand-500 dark:hover:text-brand-400 transition-colors"
+            >
+              忘记密码？
+            </Link>
+          </p>
+
+          <p className="mt-4 text-center text-sm text-gray-500 dark:text-gray-400">
             还没有账号？{' '}
             <Link
               href="/register"
