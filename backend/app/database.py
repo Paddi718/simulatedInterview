@@ -47,6 +47,10 @@ async def init_db():
             "ALTER TABLE interviews ADD COLUMN IF NOT EXISTS interview_category VARCHAR(30) DEFAULT 'private_enterprise'",
             "ALTER TABLE interviews ADD COLUMN IF NOT EXISTS category_config JSONB",
             "ALTER TABLE interviews ADD COLUMN IF NOT EXISTS question_count INTEGER",
+            # 邮箱验证
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT false",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_code VARCHAR(6)",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_code_expires_at TIMESTAMPTZ",
         ]:
             try:
                 await conn.execute(text(stmt))

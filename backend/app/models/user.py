@@ -16,6 +16,9 @@ class User(Base):
     tts_preference: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=None)
     llm_config: Mapped[dict | None] = mapped_column(JSONB, nullable=True, default=None)
     # llm_config: {"api_key": str, "api_base": str, "model": str}
+    is_verified: Mapped[bool] = mapped_column(default=False)
+    verification_code: Mapped[str | None] = mapped_column(String(6), nullable=True, default=None)
+    verification_code_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     resumes = relationship("Resume", back_populates="user", cascade="all, delete-orphan")

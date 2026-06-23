@@ -1,30 +1,116 @@
+from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update
 from app.database import get_db
 from app.models.user import User
-from app.schemas.auth import UserCreate, UserLogin, TokenResponse, UserResponse, UpdateUserRequest
+from app.schemas.auth import (
+    UserCreate, UserLogin, TokenResponse, UserResponse, UpdateUserRequest, VerifyEmailRequest,
+)
 from app.utils.auth import hash_password, verify_password, create_access_token, get_current_user
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
+VERIFICATION_CODE_EXPIRE_MINUTES = 10
 
-@router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+
+@router.post("/register", status_code=status.HTTP_201_CREATED)
 async def register(data: UserCreate, db: AsyncSession = Depends(get_db)):
+    # 检查用户名
     result = await db.execute(select(User).where(User.username == data.username))
     if result.scalar_one_or_none():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username already exists")
+        raise HTTPException(status_code=400, detail="用户名已存在")
 
-    user = User(username=data.username, password_hash=hash_password(data.password))
+    # 检查邮箱（如果提供了）
+    if data.email:
+        result = await db.execute(select(User).where(User.email == data.email, User.is_verified == True))
+        if result.scalar_one_or_none():
+            raise HTTPException(status_code=400, detail="该邮箱已被注册")
+
+    # 生成验证码
+    from app.services.email_service import send_verification_email
+    code = await send_verification_email(data.email) if data.email else None
+
+    expires = datetime.now(timezone.utc) + timedelta(minutes=VERIFICATION_CODE_EXPIRE_MINUTES)
+
+    user = User(
+        username=data.username,
+        password_hash=hash_password(data.password),
+        email=data.email,
+        is_verified=(code is None),  # 无邮箱时直接通过
+        verification_code=code,
+        verification_code_expires_at=expires if code else None,
+    )
     db.add(user)
     await db.commit()
     await db.refresh(user)
 
+    if code:
+        return {
+            "code": 0,
+            "message": "验证码已发送到您的邮箱，请查收",
+            "data": {"need_verify": True, "username": user.username},
+        }
+
     token = create_access_token(user.id)
-    return TokenResponse(
-        access_token=token,
-        user=_user_response(user),
-    )
+    return {
+        "code": 0,
+        "message": "注册成功",
+        "data": {"access_token": token, "user": _user_response(user)},
+    }
+
+
+@router.post("/verify-email")
+async def verify_email(data: VerifyEmailRequest, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(User).where(User.username == data.username))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=400, detail="用户不存在")
+    if user.is_verified:
+        raise HTTPException(status_code=400, detail="已通过验证")
+
+    if user.verification_code != data.code:
+        raise HTTPException(status_code=400, detail="验证码错误")
+
+    if user.verification_code_expires_at and user.verification_code_expires_at < datetime.now(timezone.utc):
+        raise HTTPException(status_code=400, detail="验证码已过期，请重新获取")
+
+    user.is_verified = True
+    user.verification_code = None
+    user.verification_code_expires_at = None
+    await db.commit()
+    await db.refresh(user)
+
+    token = create_access_token(user.id)
+    return {
+        "code": 0,
+        "message": "验证成功",
+        "data": {"access_token": token, "user": _user_response(user)},
+    }
+
+
+@router.post("/resend-code")
+async def resend_code(data: dict, db: AsyncSession = Depends(get_db)):
+    username = data.get("username", "")
+    result = await db.execute(select(User).where(User.username == username))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=400, detail="用户不存在")
+    if user.is_verified:
+        raise HTTPException(status_code=400, detail="已通过验证")
+    if not user.email:
+        raise HTTPException(status_code=400, detail="未绑定邮箱")
+
+    from app.services.email_service import send_verification_email
+    code = await send_verification_email(user.email)
+    if not code:
+        raise HTTPException(status_code=500, detail="发送验证码失败，请稍后再试")
+
+    user.verification_code = code
+    user.verification_code_expires_at = datetime.now(timezone.utc) + timedelta(minutes=VERIFICATION_CODE_EXPIRE_MINUTES)
+    await db.commit()
+
+    return {"code": 0, "message": "验证码已重新发送", "data": None}
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -32,7 +118,9 @@ async def login(data: UserLogin, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.username == data.username))
     user = result.scalar_one_or_none()
     if not user or not verify_password(data.password, user.password_hash):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="用户名或密码错误")
+    if not user.is_verified:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="请先验证邮箱")
 
     token = create_access_token(user.id)
     return TokenResponse(
@@ -42,7 +130,6 @@ async def login(data: UserLogin, db: AsyncSession = Depends(get_db)):
 
 
 def _user_response(user: User) -> UserResponse:
-    # 安全：不返回明文 API Key，仅返回是否已配置
     safe_llm = None
     if user.llm_config:
         safe_llm = {
@@ -70,7 +157,6 @@ async def update_me(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    # 密码修改（需要当前密码验证）
     if data.current_password is not None:
         if not verify_password(data.current_password, current_user.password_hash):
             raise HTTPException(status_code=400, detail="当前密码错误")
@@ -97,14 +183,12 @@ async def update_me(
 
 @router.get("/voices")
 async def list_voices(current_user: User = Depends(get_current_user)):
-    """返回可用的 TTS 音色列表"""
     from app.services.tts_service import SUPPORTED_VOICES
     return {"code": 0, "data": SUPPORTED_VOICES, "message": "ok"}
 
 
 @router.post("/test-llm")
 async def test_llm_connection(data: dict, current_user: User = Depends(get_current_user)):
-    """测试用户自定义 LLM API 连接"""
     from app.services.llm_client import llm_chat
     try:
         result = await llm_chat(

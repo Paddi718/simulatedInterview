@@ -30,6 +30,13 @@ class Settings(BaseSettings):
     llm_api_base: str = "https://api.deepseek.com/v1"
     llm_model: str = "deepseek-chat"
 
+    # Email (SMTP — 邮箱验证)
+    smtp_host: str = "smtp.qq.com"
+    smtp_port: int = 465
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""
+
     # Server
     uvicorn_workers: int = 1
 

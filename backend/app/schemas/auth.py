@@ -4,6 +4,12 @@ from pydantic import BaseModel, Field
 class UserCreate(BaseModel):
     username: str = Field(min_length=2, max_length=50)
     password: str = Field(min_length=6, max_length=100)
+    email: str | None = Field(None, max_length=255)
+
+
+class VerifyEmailRequest(BaseModel):
+    username: str
+    code: str
 
 
 class UserLogin(BaseModel):

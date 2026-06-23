@@ -54,6 +54,11 @@ services:
       LLM_API_BASE: ${LLM_API_BASE}
       LLM_MODEL: ${LLM_MODEL}
       UVICORN_WORKERS: ${UVICORN_WORKERS:-2}
+      SMTP_HOST: ${SMTP_HOST:-smtp.qq.com}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_FROM: ${SMTP_FROM}
       DB_POOL_SIZE: ${DB_POOL_SIZE:-20}
       DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-30}
       AUDIO_STORAGE_PATH: ${AUDIO_STORAGE_PATH:-/var/data/interview-app/audio}
