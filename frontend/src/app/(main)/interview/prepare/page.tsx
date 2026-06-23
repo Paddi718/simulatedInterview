@@ -102,6 +102,7 @@ export default function PreparePage() {
   const [creatingJd, setCreatingJd] = useState(false);
   const [deletingJdId, setDeletingJdId] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [hasLlmKey, setHasLlmKey] = useState(true);  // 默认true避免闪烁
 
   // Click outside handler for province dropdown
   useEffect(() => {
@@ -125,12 +126,16 @@ export default function PreparePage() {
 
   const loadData = async () => {
     try {
-      const [resumeData, jdData] = await Promise.all([
+      const [resumeData, jdData, userData] = await Promise.all([
         api.get<{ resumes: Resume[] }>('/api/resume/list'),
         api.get<{ items: JD[] }>('/api/jd/list'),
+        api.get<{ llm_config: any }>('/api/auth/me'),
       ]);
       setResumes(resumeData.resumes || []);
       setJds(jdData.items || []);
+      // 检查是否配置了 LLM API Key
+      const llm = (userData as any)?.llm_config;
+      setHasLlmKey(!!(llm && llm.api_key));
     } catch (err: any) {
       setError(err.message);
     }
@@ -692,6 +697,29 @@ export default function PreparePage() {
             选择面试类型，开始 AI 模拟面试
           </p>
         </div>
+
+        {/* LLM Key 未配置提醒 */}
+        {!hasLlmKey && (
+          <div className="mb-8 p-5 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+              <div className="flex-1">
+                <h3 className="font-semibold text-amber-800 dark:text-amber-300 text-sm">
+                  未配置 LLM API Key
+                </h3>
+                <p className="text-amber-700 dark:text-amber-400 text-sm mt-1 leading-relaxed">
+                  AI 出题和评分需要调用大语言模型。请先在设置页配置你的 DeepSeek API Key，否则无法创建面试。
+                </p>
+                <button
+                  onClick={() => router.push('/settings')}
+                  className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-amber-800 dark:text-amber-300 hover:text-amber-900 dark:hover:text-amber-200 transition-colors"
+                >
+                  前往设置 <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ===================== Step 0: Category Selection ===================== */}
         {!category && (
