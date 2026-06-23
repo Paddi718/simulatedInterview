@@ -25,7 +25,6 @@ class Settings(BaseSettings):
     # 搜索（公务员/事业单位面试热点 — 多源兜底）
     search_serper_api_key: str = ""       # Serper: https://serper.dev
     search_tavily_api_key: str = ""       # Tavily: https://app.tavily.com
-    search_searxng_url: str = ""          # SearXNG: 自部署 http://host:8080
 
     # LLM
     llm_api_key: str = ""

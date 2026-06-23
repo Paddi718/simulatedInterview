@@ -6,12 +6,11 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { ToastProvider, useToast } from '@/components/ui/Toast';
-import { Search, Key, Globe, CheckCircle2, XCircle, Loader2, FlaskConical } from 'lucide-react';
+import { Search, Key, CheckCircle2, XCircle, Loader2, FlaskConical } from 'lucide-react';
 
 const PROVIDER_INFO: Record<string, { name: string; desc: string; url: string }> = {
   serper: { name: 'Serper', desc: 'Google 搜索结果，中文最优', url: 'https://serper.dev' },
   tavily: { name: 'Tavily', desc: 'AI 优化摘要，每月 1,000 次', url: 'https://app.tavily.com' },
-  searxng: { name: 'SearXNG', desc: '自部署元搜索引擎', url: '' },
   builtin: { name: '内置 Bing', desc: '自动兜底，无需配置', url: '' },
 };
 
@@ -27,7 +26,6 @@ function AdminSettingsContent() {
   const [serperKey, setSerperKey] = useState('');
   const [tavilyKey, setTavilyKey] = useState('');
   const [providers, setProviders] = useState('serper,tavily,builtin');
-  const [searxngUrl, setSearxngUrl] = useState('');
 
   const loadConfig = useCallback(async () => {
     try {
@@ -37,7 +35,6 @@ function AdminSettingsContent() {
       setSerperKey(data.search_serper_api_key || '');
       setTavilyKey(data.search_tavily_api_key || '');
       setProviders(data.search_providers || 'serper,tavily,builtin');
-      setSearxngUrl(data.search_searxng_url || '');
     } catch {
       // ignore
     } finally {
@@ -54,7 +51,6 @@ function AdminSettingsContent() {
         search_serper_api_key: serperKey,
         search_tavily_api_key: tavilyKey,
         search_providers: providers,
-        search_searxng_url: searxngUrl,
       });
       toast({ title: '配置已保存', variant: 'success' });
       loadConfig();
@@ -163,22 +159,6 @@ function AdminSettingsContent() {
               免费注册 <a href="https://app.tavily.com" target="_blank" className="text-brand-500 hover:underline">app.tavily.com</a>，AI 优化搜索，每月 1,000 次。无需信用卡。
             </p>
           </div>
-
-          {/* SearXNG */}
-          <div>
-            <label className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-              <Globe className="h-4 w-4" />
-              SearXNG URL（可选）
-              {searxngUrl ? <CheckCircle2 className="h-4 w-4 text-green-500" /> : <XCircle className="h-4 w-4 text-gray-300" />}
-            </label>
-            <Input value={searxngUrl} onChange={(e) => setSearxngUrl(e.target.value)}
-              placeholder="未配置（将跳过 SearXNG）" className="font-mono text-sm" />
-            <p className="text-xs text-gray-400 mt-1">
-              自部署，免费无限。Docker: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">docker run -d -p 8080:8080 searxng/searxng</code>
-            </p>
-          </div>
-
-          <hr className="border-gray-100 dark:border-gray-800" />
 
           {/* Builtin status */}
           <div className="flex items-center gap-2 text-sm">

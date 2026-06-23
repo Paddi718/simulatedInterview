@@ -3,13 +3,11 @@ import os
 from app.services.search.base import SearchResult
 from app.services.search.providers.serper import SerperProvider
 from app.services.search.providers.tavily import TavilyProvider
-from app.services.search.providers.searxng import SearXNGProvider
 from app.services.search.providers.builtin import BuiltinSearchProvider
 
 _PROVIDER_REGISTRY: dict[str, type] = {
     "serper": SerperProvider,
     "tavily": TavilyProvider,
-    "searxng": SearXNGProvider,
     "builtin": BuiltinSearchProvider,
 }
 
@@ -75,13 +73,11 @@ class SearchOrchestrator:
         # 从 DB 读取配置（优先级高于 .env）
         db_serper_key = await _read_db_config_async("search_serper_api_key")
         db_tavily_key = await _read_db_config_async("search_tavily_api_key")
-        db_searxng_url = await _read_db_config_async("search_searxng_url")
         db_providers = await _read_db_config_async("search_providers")
 
         # 优先级：DB > .env
         serper_key = db_serper_key or os.getenv("SEARCH_SERPER_API_KEY", "")
         tavily_key = db_tavily_key or os.getenv("SEARCH_TAVILY_API_KEY", "")
-        searxng_url = db_searxng_url or os.getenv("SEARCH_SEARXNG_URL", "")
         provider_order = db_providers or os.getenv("SEARCH_PROVIDERS", "serper,tavily,builtin")
 
         # 确保 builtin 始终在最后兜底
@@ -108,9 +104,6 @@ class SearchOrchestrator:
             elif key == "tavily":
                 provider = cls()
                 provider.api_key = tavily_key
-            elif key == "searxng":
-                provider = cls()
-                provider.base_url = searxng_url
             else:
                 continue
 

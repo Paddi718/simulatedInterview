@@ -330,7 +330,7 @@ async def admin_update_config(
     """批量更新系统配置。data = {key: value, ...}"""
     allowed_keys = {
         "search_serper_api_key", "search_tavily_api_key",
-        "search_searxng_url", "search_providers",
+        "search_providers",
     }
     for key, value in data.items():
         if key not in allowed_keys:
