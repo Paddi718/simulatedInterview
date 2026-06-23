@@ -119,19 +119,25 @@ simulatedInterview/
 
 | 变量 | 说明 | 必填 |
 |------|------|------|
-| `LLM_API_KEY` | DeepSeek API 密钥 | ✅ |
-| `LLM_API_BASE` | LLM API 地址 | ✅ |
-| `LLM_MODEL` | LLM 模型名称 | ✅ |
 | `JWT_SECRET` | JWT 签名密钥（生产环境必须修改） | ✅ |
+| `LLM_API_KEY` | 全局兜底 Key（生产环境留空，用户自备） | ❌ |
+| `LLM_API_BASE` | LLM API 地址 | 有用户配置则不需要 |
+| `LLM_MODEL` | LLM 模型名称 | 有用户配置则不需要 |
 | `ALLOWED_ORIGINS` | CORS 白名单 | 生产建议 |
 | `ASR_MAX_CONCURRENT` | ASR 并发上限（3-5） | 生产建议 |
 | `UVICORN_WORKERS` | Uvicorn worker 数量（2） | 生产建议 |
 | `DB_POOL_SIZE` | 数据库连接池（20） | 生产建议 |
 
+### 💡 LLM API Key 设计
+
+**生产环境：每个用户自带 Key。** 用户注册后去「设置」页配置自己的 DeepSeek API Key，出题和评分的费用由各用户承担。没有配置 Key 时创建面试会提示「请先在设置页配置 API Key」。
+
+**自托管/开发环境：** 可以在 `.env` 配一个全局 Key 作为兜底，未配置个人 Key 的用户自动使用此 Key。
+
 ### 生产部署安全清单
 
 - [ ] `JWT_SECRET` 已改为强随机值 (`openssl rand -hex 32`)
-- [ ] `LLM_API_KEY` 已更新（旧 Key 在开发中暴露）
+- [ ] `.env` 中 `LLM_API_KEY` 已**留空**（生产环境用户自备 Key）
 - [ ] `ALLOWED_ORIGINS` 已设为实际域名
 - [ ] HTTPS 已配置（nginx/Caddy 反向代理）
 

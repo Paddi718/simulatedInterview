@@ -20,15 +20,25 @@ def _clean_json(result: str) -> str:
 
 def extract_llm_config(user_llm_config: dict | None) -> tuple[str | None, str | None, str | None]:
     """从用户 JSONB 字段提取 LLM 配置（api_key, api_base, model）。
-    返回三元组，值为 None 时 llm_chat 会 fallback 到 settings 全局值。
+
+    优先级：用户配置 > 全局 .env（可选兜底）
+    若用户未配置且全局也无 key，调用方应返回明确错误，引导用户去设置页配置。
     """
     if not user_llm_config:
         return None, None, None
-    return (
-        user_llm_config.get('api_key') or None,
-        user_llm_config.get('api_base') or None,
-        user_llm_config.get('model') or None,
-    )
+
+    user_key = user_llm_config.get('api_key') or None
+    user_base = user_llm_config.get('api_base') or None
+    user_model = user_llm_config.get('model') or None
+
+    # 若有全局兜底 key 且用户未覆盖，则使用全局值（仅开发/自托管场景）
+    from app.config import get_settings
+    settings = get_settings()
+    api_key = user_key or settings.llm_api_key or None
+    api_base = user_base or settings.llm_api_base or None
+    model = user_model or settings.llm_model or None
+
+    return api_key, api_base, model
 
 
 async def llm_chat(

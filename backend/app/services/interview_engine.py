@@ -3,6 +3,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Optional
+from fastapi import HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
 from app.models.interview import Interview
@@ -28,12 +29,18 @@ class InterviewEngine:
         category_config: dict | None = None,
         question_count: int | None = None,
     ) -> Interview:
-        # 查找用户 LLM 配置
+        # 查找用户 LLM 配置（用户 Key > 全局兜底）
         from app.models.user import User
         from app.services.llm_client import extract_llm_config
         u_result = await db.execute(select(User).where(User.id == user_id))
         user_db = u_result.scalar_one_or_none()
         llm_key, llm_base, llm_model = extract_llm_config(user_db.llm_config if user_db else None)
+
+        if not llm_key:
+            raise HTTPException(
+                status_code=400,
+                detail="请先在「设置」页面配置您的 LLM API Key，然后再创建面试",
+            )
 
         cfg = category_config or {}
 
