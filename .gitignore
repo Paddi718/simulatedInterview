@@ -65,3 +65,8 @@ Thumbs.db
 # Docker
 # ============================
 docker-compose.override.yml
+
+# Build artifacts
+*.tar.gz
+*.tar
+*.zip
