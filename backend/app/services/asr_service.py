@@ -1,9 +1,25 @@
 import asyncio
+import os
 import re
 from typing import AsyncGenerator, Optional
 from app.config import get_settings
 
 settings = get_settings()
+
+# ---------------------------------------------------------------------------
+# 并发控制：防止 OOM（生产环境限制同时 ASR 任务数）
+# ---------------------------------------------------------------------------
+_asr_semaphore: Optional[asyncio.Semaphore] = None
+
+
+def _get_asr_semaphore() -> Optional[asyncio.Semaphore]:
+    global _asr_semaphore
+    if _asr_semaphore is not None:
+        return _asr_semaphore
+    limit = int(os.getenv("ASR_MAX_CONCURRENT", str(settings.asr_max_concurrent)) or "0")
+    if limit > 0:
+        _asr_semaphore = asyncio.Semaphore(limit)
+    return _asr_semaphore
 
 
 # ---------------------------------------------------------------------------
@@ -49,7 +65,17 @@ async def transcribe_pcm(pcm_bytes: bytes, language: str = "auto") -> str:
     """
     对完整 PCM 音频（16kHz, 16bit, mono）进行离线识别。
     通过 asyncio.to_thread 将同步阻塞的模型调用放入线程池。
+    生产环境通过 ASR_MAX_CONCURRENT 限制并行数，防止 OOM。
     """
+    sem = _get_asr_semaphore()
+    if sem:
+        async with sem:
+            return await _transcribe_impl(pcm_bytes, language)
+    return await _transcribe_impl(pcm_bytes, language)
+
+
+async def _transcribe_impl(pcm_bytes: bytes, language: str) -> str:
+    """实际的 ASR 转录逻辑"""
     model = _get_model()
 
     result = await asyncio.to_thread(

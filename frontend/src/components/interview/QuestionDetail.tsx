@@ -113,8 +113,7 @@ export default function QuestionDetail({ question, interviewId, onFavoriteToggle
     setFavoriteLoading(true);
     try {
       const token = localStorage.getItem('access_token');
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      const res = await fetch(`${apiBase}/api/interview/${interviewId}/question/${question.order_index}/favorite`, {
+      const res = await fetch(`/api/interview/${interviewId}/question/${question.order_index}/favorite`, {
         method: 'POST',
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
@@ -138,8 +137,7 @@ export default function QuestionDetail({ question, interviewId, onFavoriteToggle
     setLoadingAudio(true);
     try {
       const token = localStorage.getItem('access_token');
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
-      const url = `${apiBase}/api/interview/${interviewId}/recording/${question.order_index}`;
+      const url = `/api/interview/${interviewId}/recording/${question.order_index}`;
       const res = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
       if (!res.ok) {
         if (res.status === 404) setAudioError('未找到录音文件');

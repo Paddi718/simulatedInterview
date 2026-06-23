@@ -1,4 +1,16 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+/**
+ * API 客户端 — 全部使用相对路径，由 Next.js rewrite 代理到后端。
+ * 生产环境下后端地址永不暴露到浏览器。
+ */
+
+// WebSocket URL 从浏览器地址派生（生产同源，本地开发可设环境变量）
+export function getWsUrl(): string {
+  if (typeof window === 'undefined') return 'ws://localhost:8000';
+  const envWs = process.env.NEXT_PUBLIC_WS_URL;
+  if (envWs) return envWs;                            // 本地开发：直连后端
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${window.location.host}`;       // 生产：同源
+}
 
 class ApiError extends Error {
   code: number;
@@ -14,8 +26,6 @@ async function request<T>(
 ): Promise<T> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
 
-  // FormData 不能手动设 Content-Type，让浏览器自动设置 boundary
-  // 无 body 时不设 Content-Type（避免不必要的 CORS preflight）
   const isFormData = options.body instanceof FormData;
   const hasBody = options.body != null;
   const headers: Record<string, string> = {
@@ -27,12 +37,9 @@ async function request<T>(
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${API_BASE}${endpoint}`, {
-    ...options,
-    headers,
-  });
+  // 相对路径 → Next.js rewrite 代理到后端（生产安全）
+  const res = await fetch(endpoint, { ...options, headers });
 
-  // 204 No Content 无响应体
   if (res.status === 204) {
     return undefined as unknown as T;
   }
@@ -44,7 +51,6 @@ async function request<T>(
       localStorage.removeItem('access_token');
       window.location.href = '/login';
     }
-    // 兼容 FastAPI 验证错误（detail 是数组）和普通错误
     const errMsg = (() => {
       if (json.message) return json.message;
       if (typeof json.detail === 'string') return json.detail;
@@ -56,7 +62,6 @@ async function request<T>(
     throw new ApiError(errMsg, res.status);
   }
 
-  // 兼容两种响应格式：统一格式 {code, data, message} 或直接返回数据
   if (json.code !== undefined) {
     if (json.code !== 0) {
       throw new ApiError(json.message || 'Request failed', json.code);
@@ -64,13 +69,12 @@ async function request<T>(
     return json.data as T;
   }
 
-  // 没有 code 字段时，整个响应体就是 data
   return json as T;
 }
 
 async function downloadBlob(endpoint: string): Promise<{ blob: Blob; filename: string }> {
   const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
-  const res = await fetch(`${API_BASE}${endpoint}`, {
+  const res = await fetch(endpoint, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   if (!res.ok) {
@@ -90,7 +94,6 @@ async function downloadBlob(endpoint: string): Promise<{ blob: Blob; filename: s
 export const api = {
   get: <T>(endpoint: string) => request<T>(endpoint),
   post: <T>(endpoint: string, data?: any) => {
-    // 如果 data 是 ArrayBuffer 或 Uint8Array，作为二进制发送
     if (data instanceof ArrayBuffer || data instanceof Uint8Array) {
       const body: ArrayBuffer = data instanceof Uint8Array ? (data.buffer as ArrayBuffer) : data;
       return request<T>(endpoint, {

@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { api } from '@/lib/api';
+import { api, getWsUrl } from '@/lib/api';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/lib/utils';
 import {
@@ -207,8 +207,7 @@ export default function SettingsPage() {
     setPreviewing(voiceId);
     try {
       const t = localStorage.getItem('access_token');
-      const wsUrl = process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:8000';
-      const ws = new WebSocket(`${wsUrl}/api/ws/interview/00000000-0000-0000-0000-000000000000?token=${t}`);
+      const ws = new WebSocket(`${getWsUrl()}/api/ws/interview/00000000-0000-0000-0000-000000000000?token=${t}`);
       ws.binaryType = 'arraybuffer';
       const audioContext = new AudioContext();
 

@@ -27,12 +27,16 @@ export DATABASE_URL="${DATABASE_URL:-postgresql+asyncpg://interview_user:passwor
 export REDIS_URL="${REDIS_URL:-redis://localhost:6379/0}"
 export JWT_SECRET="${JWT_SECRET:-dev_jwt_secret_change_me}"
 export ASR_MODEL_DIR="${ASR_MODEL_DIR:-../models/SenseVoiceSmall}"
+export ASR_MAX_CONCURRENT="${ASR_MAX_CONCURRENT:-0}"   # 本地不限制
 export LLM_API_KEY="${LLM_API_KEY:-your_api_key_here}"
 export LLM_API_BASE="${LLM_API_BASE:-https://api.deepseek.com/v1}"
 export LLM_MODEL="${LLM_MODEL:-deepseek-chat}"
+export DB_POOL_SIZE="${DB_POOL_SIZE:-10}"              # 本地 10 足够
+export DB_MAX_OVERFLOW="${DB_MAX_OVERFLOW:-20}"
 export AUDIO_STORAGE_PATH="${AUDIO_STORAGE_PATH:-../data/audio}"
 export DOCUMENT_STORAGE_PATH="${DOCUMENT_STORAGE_PATH:-../data/documents}"
 export RESUME_STORAGE_PATH="${RESUME_STORAGE_PATH:-../data/resumes}"
 
 echo "Starting backend on http://localhost:8010..."
+# --reload 不支持多 worker，本地永远是单 worker
 uvicorn app.main:app --host 0.0.0.0 --port 8010 --reload

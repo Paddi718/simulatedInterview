@@ -46,11 +46,16 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
       JWT_SECRET: ${JWT_SECRET}
       ASR_MODEL_DIR: ${ASR_MODEL_DIR:-models/SenseVoiceSmall}
+      ASR_MAX_CONCURRENT: ${ASR_MAX_CONCURRENT:-3}
       LLM_API_KEY: ${LLM_API_KEY}
       LLM_API_BASE: ${LLM_API_BASE}
       LLM_MODEL: ${LLM_MODEL}
+      UVICORN_WORKERS: ${UVICORN_WORKERS:-2}
+      DB_POOL_SIZE: ${DB_POOL_SIZE:-20}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW:-30}
       AUDIO_STORAGE_PATH: ${AUDIO_STORAGE_PATH:-/var/data/interview-app/audio}
       DOCUMENT_STORAGE_PATH: ${DOCUMENT_STORAGE_PATH:-/var/data/interview-app/documents}
       RESUME_STORAGE_PATH: ${RESUME_STORAGE_PATH:-/var/data/interview-app/resumes}
@@ -69,7 +74,13 @@ services:
       interval: 15s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
 
   frontend:
     build:
@@ -97,6 +108,12 @@ services:
       timeout: 5s
       retries: 3
       start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
 
 volumes:
   pgdata:

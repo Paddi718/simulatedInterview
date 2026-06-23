@@ -8,7 +8,7 @@ import {
   Clock, Brain, Send, RotateCcw, XCircle, CheckCircle2,
   Sparkles, Target, Zap, FileText, Star, AlertCircle
 } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, getWsUrl } from '@/lib/api';
 
 /* ---------- Types ---------- */
 interface Question {
@@ -61,7 +61,6 @@ const DIM_ICONS: Record<string, any> = {
   star_method: Star,
 };
 
-function getWsUrl() { return (process.env.NEXT_PUBLIC_API_URL||'http://localhost:8000').replace(/^http/,'ws'); }
 function formatTime(s: number) { return `${Math.floor(s/60)}:${(s%60).toString().padStart(2,'0')}`; }
 
 /* ========== SpeechRecognition wrapper ========== */
@@ -230,8 +229,7 @@ function SessionContent() {
     setAudioLoading(true);
     const orderIndex=questions[currentIndex].order_index;
     const token=localStorage.getItem('access_token');
-    const apiBase=process.env.NEXT_PUBLIC_API_URL||'http://localhost:8000';
-    const url=`${apiBase}/api/interview/${interviewId}/audio/${orderIndex}`;
+    const url=`/api/interview/${interviewId}/audio/${orderIndex}`;
 
     const tryFetch=async(retries:number):Promise<ArrayBuffer>=>{
       const res=await fetch(url,{headers:token?{Authorization:`Bearer ${token}`}:{}});
@@ -295,7 +293,7 @@ function SessionContent() {
     if(!interviewId) return;
     if(questionSseRef.current){questionSseRef.current.close();questionSseRef.current=null;}
     const token=localStorage.getItem('access_token');
-    const url=`${(process.env.NEXT_PUBLIC_API_URL||'http://localhost:8000')}/api/interview/${interviewId}/stream-questions?token=${token}`;
+    const url=`/api/interview/${interviewId}/stream-questions?token=${token}`;
 
     fetch(url,{headers:token?{Authorization:`Bearer ${token}`}:{}}).then(async(res)=>{
       if(!res.ok||!res.body) return;
@@ -335,9 +333,8 @@ function SessionContent() {
                     const autoRead=localStorage.getItem('tts_auto_read')==='true';
                     if(!autoRead||hasAutoReadRef.current)return;
                     setHasAutoRead(true);hasAutoReadRef.current=true;
-                    const apiBase=process.env.NEXT_PUBLIC_API_URL||'http://localhost:8000';
                     const token=localStorage.getItem('access_token');
-                    const url=`${apiBase}/api/interview/${interviewId}/audio/1`;
+                    const url=`/api/interview/${interviewId}/audio/1`;
                     stopTts();setTtsPlaying(true);setAudioLoading(true);
                     fetch(url,{headers:token?{Authorization:`Bearer ${token}`}:{}})
                       .then(res=>{if(!mountedRef.current)throw new Error('um');if(!res.ok)throw new Error(`HTTP ${res.status}`);return res.arrayBuffer();})
@@ -411,8 +408,7 @@ function SessionContent() {
 
     const q = questions[currentIndex];
     const token=localStorage.getItem('access_token');
-    const apiBase=process.env.NEXT_PUBLIC_API_URL||'http://localhost:8000';
-    const url=`${apiBase}/api/interview/${interviewId}/audio/${q.order_index}`;
+    const url=`/api/interview/${interviewId}/audio/${q.order_index}`;
 
     const tryFetch = (retries: number) => {
       if(!mountedRef.current)return;

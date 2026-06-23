@@ -42,12 +42,19 @@ async def login(data: UserLogin, db: AsyncSession = Depends(get_db)):
 
 
 def _user_response(user: User) -> UserResponse:
+    # 安全：不返回明文 API Key，仅返回是否已配置
+    safe_llm = None
+    if user.llm_config:
+        safe_llm = {
+            k: ("***" if k in ("api_key", "llm_api_key", "key") else v)
+            for k, v in user.llm_config.items()
+        }
     return UserResponse(
         id=str(user.id),
         username=user.username,
         email=user.email,
         tts_preference=user.tts_preference,
-        llm_config=user.llm_config,
+        llm_config=safe_llm,
         created_at=user.created_at.isoformat(),
     )
 
