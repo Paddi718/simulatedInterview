@@ -331,6 +331,8 @@ async def admin_update_config(
     allowed_keys = {
         "search_serper_api_key", "search_tavily_api_key",
         "search_providers",
+        "smtp_host", "smtp_port", "smtp_user",
+        "smtp_password", "smtp_from",
     }
     for key, value in data.items():
         if key not in allowed_keys:

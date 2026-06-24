@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { ToastProvider, useToast } from '@/components/ui/Toast';
-import { Search, Key, CheckCircle2, XCircle, Loader2, FlaskConical } from 'lucide-react';
+import { Search, Key, Mail, CheckCircle2, XCircle, Loader2, FlaskConical } from 'lucide-react';
 
 const PROVIDER_INFO: Record<string, { name: string; desc: string; url: string }> = {
   serper: { name: 'Serper', desc: 'Google 搜索结果，中文最优', url: 'https://serper.dev' },
@@ -26,6 +26,12 @@ function AdminSettingsContent() {
   const [serperKey, setSerperKey] = useState('');
   const [tavilyKey, setTavilyKey] = useState('');
   const [providers, setProviders] = useState('serper,tavily,builtin');
+  // SMTP
+  const [smtpHost, setSmtpHost] = useState('');
+  const [smtpPort, setSmtpPort] = useState('');
+  const [smtpUser, setSmtpUser] = useState('');
+  const [smtpPassword, setSmtpPassword] = useState('');
+  const [smtpFrom, setSmtpFrom] = useState('');
 
   const loadConfig = useCallback(async () => {
     try {
@@ -35,6 +41,11 @@ function AdminSettingsContent() {
       setSerperKey(data.search_serper_api_key || '');
       setTavilyKey(data.search_tavily_api_key || '');
       setProviders(data.search_providers || 'serper,tavily,builtin');
+      setSmtpHost(data.smtp_host || '');
+      setSmtpPort(data.smtp_port || '');
+      setSmtpUser(data.smtp_user || '');
+      setSmtpPassword(data.smtp_password || '');
+      setSmtpFrom(data.smtp_from || '');
     } catch {
       // ignore
     } finally {
@@ -51,6 +62,11 @@ function AdminSettingsContent() {
         search_serper_api_key: serperKey,
         search_tavily_api_key: tavilyKey,
         search_providers: providers,
+        smtp_host: smtpHost,
+        smtp_port: smtpPort,
+        smtp_user: smtpUser,
+        smtp_password: smtpPassword,
+        smtp_from: smtpFrom,
       });
       toast({ title: '配置已保存', variant: 'success' });
       loadConfig();
@@ -166,6 +182,58 @@ function AdminSettingsContent() {
             <span className="text-gray-600 dark:text-gray-400">内置 Bing 搜索：</span>
             <span className="font-medium text-green-600 dark:text-green-400">始终可用（最终兜底）</span>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* SMTP Config */}
+      <Card className="mb-6">
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Mail className="h-5 w-5 text-gray-400" />
+            <CardTitle className="text-base">邮箱服务配置</CardTitle>
+            <span className={`ml-auto inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+              smtpUser && smtpPassword
+                ? 'bg-green-50 text-green-600 dark:bg-green-950/30 dark:text-green-400'
+                : 'bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400'
+            }`}>
+              {smtpUser && smtpPassword ? '已配置 · 注册开放' : '未配置 · 注册关闭'}
+            </span>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-xs text-gray-400">
+            配置 SMTP 后新用户才能注册。未配置时注册会提示"系统暂未开放注册"。
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">SMTP 服务器</label>
+              <Input value={smtpHost} onChange={(e) => setSmtpHost(e.target.value)}
+                placeholder="smtp.qq.com" className="text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">端口</label>
+              <Input value={smtpPort} onChange={(e) => setSmtpPort(e.target.value)}
+                placeholder="465" className="text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">邮箱账号</label>
+              <Input value={smtpUser} onChange={(e) => setSmtpUser(e.target.value)}
+                placeholder="your@email.com" className="text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">授权码 / 密码</label>
+              <Input value={smtpPassword} onChange={(e) => setSmtpPassword(e.target.value)}
+                type="password" placeholder="SMTP 授权码" className="text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">发件人地址</label>
+              <Input value={smtpFrom} onChange={(e) => setSmtpFrom(e.target.value)}
+                placeholder="与邮箱账号相同" className="text-sm" />
+            </div>
+          </div>
+          <p className="text-xs text-gray-400">
+            QQ邮箱：smtp.qq.com:465，密码填<a href="https://service.mail.qq.com/detail/0/75" target="_blank" className="text-brand-500 hover:underline">授权码</a>（非QQ密码）。
+          </p>
         </CardContent>
       </Card>
 

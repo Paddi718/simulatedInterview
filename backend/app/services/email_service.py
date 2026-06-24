@@ -1,11 +1,39 @@
 import smtplib
 import random
+import os
 from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from app.config import get_settings
 
-settings = get_settings()
+
+async def _read_db_config(key: str) -> str | None:
+    """从 system_configs 表异步读取配置值"""
+    try:
+        from app.database import async_session_factory
+        from sqlalchemy import text
+        async with async_session_factory() as db:
+            r = await db.execute(text("SELECT value FROM system_configs WHERE key = :k"), {"k": key})
+            row = r.fetchone()
+            return row[0] if row else None
+    except Exception:
+        return None
+
+
+async def _get_smtp_config() -> dict[str, str]:
+    """读取 SMTP 配置：DB 优先，.env 兜底"""
+    return {
+        "host": await _read_db_config("smtp_host") or os.getenv("SMTP_HOST", "smtp.qq.com"),
+        "port": int(await _read_db_config("smtp_port") or os.getenv("SMTP_PORT", "465")),
+        "user": await _read_db_config("smtp_user") or os.getenv("SMTP_USER", ""),
+        "password": await _read_db_config("smtp_password") or os.getenv("SMTP_PASSWORD", ""),
+        "from": await _read_db_config("smtp_from") or os.getenv("SMTP_FROM", ""),
+    }
+
+
+async def is_smtp_configured() -> bool:
+    """检查 SMTP 是否已配置（用户 + 密码必须非空）"""
+    cfg = await _get_smtp_config()
+    return bool(cfg["user"] and cfg["password"])
 
 
 def _generate_code() -> str:
@@ -155,7 +183,8 @@ async def send_verification_email(to_email: str, scenario: str = "register") -> 
     html_body = _build_verification_email_html(code, scenario)
 
     msg = MIMEMultipart("alternative")
-    msg["From"] = settings.smtp_from or settings.smtp_user
+    cfg = await _get_smtp_config()
+    msg["From"] = cfg["from"] or cfg["user"]
     msg["To"] = to_email
     msg["Subject"] = f"AI 模拟面试 - {subject}"
 
@@ -171,8 +200,8 @@ async def send_verification_email(to_email: str, scenario: str = "register") -> 
     msg.attach(MIMEText(html_body, "html", "utf-8"))
 
     try:
-        server = smtplib.SMTP_SSL(settings.smtp_host, settings.smtp_port, timeout=15)
-        server.login(settings.smtp_user, settings.smtp_password)
+        server = smtplib.SMTP_SSL(cfg["host"], cfg["port"], timeout=15)
+        server.login(cfg["user"], cfg["password"])
         server.sendmail(msg["From"], [to_email], msg.as_string())
         server.quit()
         return code

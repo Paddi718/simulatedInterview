@@ -28,9 +28,11 @@ async def register(data: UserCreate, db: AsyncSession = Depends(get_db)):
             raise HTTPException(status_code=400, detail="该邮箱已被注册")
 
     # 生成验证码
-    from app.services.email_service import send_verification_email
+    from app.services.email_service import send_verification_email, is_smtp_configured
     code = None
     if data.email:
+        if not await is_smtp_configured():
+            raise HTTPException(status_code=503, detail="系统暂未开放注册，请稍后再试")
         code = await send_verification_email(data.email)
         if not code:
             raise HTTPException(status_code=500, detail="验证码发送失败，请稍后重试")
