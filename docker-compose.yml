@@ -93,7 +93,7 @@ services:
       dockerfile: Dockerfile
       args:
         - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
-        - NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL:-ws://localhost:8000}
+        # NEXT_PUBLIC_WS_URL 不设置 → getWsUrl() 自动从 window.location 派生
         - API_INTERNAL_URL=http://backend:8000
     container_name: interview-frontend
     restart: unless-stopped
@@ -101,7 +101,7 @@ services:
       - "${FRONTEND_PORT:-3000}:3000"
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
-      NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-ws://localhost:8000}
+      # WS URL 由浏览器自动派生（不设置则用 window.location）
     networks:
       - interview-net
     depends_on:
