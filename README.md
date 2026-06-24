@@ -18,25 +18,30 @@
 
 ## ✨ 核心功能
 
-- **智能出题** — 基于简历 + JD / 省份省情 + 热点事件，AI 自动生成个性化面试题
+- **智能出题** — 私企（简历+JD）/ 公务员/事业单位（省份省情 + 时政热点搜索），AI 自动生成个性化面试题
+- **时政搜索** — 公务员/事业单位面试自动搜索近期热点，Serper → Tavily → 内置 Bing 三重兜底
 - **语音交互** — 语音录制 + 实时转写（FunASR），AI 面试官语音播报（Edge TTS）
 - **多维度评分** — 按类别差异化评分维度，百分制 + 逐题打分
 - **面试报告** — PDF / Markdown / HTML 三种格式，含雷达图、逐题评分、参考答案、简历优化建议
-- **全栈 Docker 部署** — 一键启动前后端 + 数据库 + 缓存，镜像 3.5 GB
-- **生产安全** — CORS 白名单、速率限制、LLM Key 脱敏、安全响应头
+- **邮箱验证** — 注册邮箱验证 + 忘记密码重置，HTML 邮件模板
+- **管理后台** — 用户管理、面试管理、系统统计、搜索配置（管理员可视化管理）
+- **全栈 Docker 部署** — 一键启动前后端 + 数据库 + 缓存
+- **生产安全** — HTTPS + nginx 反代、CORS 白名单、速率限制、LLM Key 脱敏、安全响应头
 
 ## 🛠 技术栈
 
 | 层级 | 技术 |
 |------|------|
-| 前端 | Next.js 14, Tailwind CSS, shadcn/ui, Zustand, Recharts |
-| 后端 | Python FastAPI, SQLAlchemy 2.0 (async), Alembic |
-| 数据库 | PostgreSQL 15 (连接池 20) |
+| 前端 | Next.js 14, Tailwind CSS, Lucide Icons, Zustand |
+| 后端 | Python FastAPI, SQLAlchemy 2.0 (async), Alembic, Jinja2 |
+| 数据库 | PostgreSQL 15 |
 | 缓存 | Redis 7 |
-| AI | DeepSeek API (出题 + 评分) |
+| AI | DeepSeek API（出题 + 评分） |
 | 语音识别 | FunASR SenseVoiceSmall 本地模型（免费） |
 | 语音合成 | 微软 Edge TTS（免费） |
-| 部署 | Docker Compose + BuildKit 缓存 |
+| 搜索 | Serper / Tavily / 内置 Bing 爬虫（免费，多源兜底） |
+| 邮件 | QQ 邮箱 SMTP（验证码发送） |
+| 部署 | Docker Compose + BuildKit 缓存 + nginx 反向代理 |
 
 ## 🚀 快速开始
 
@@ -97,17 +102,19 @@ simulatedInterview/
 │   │   ├── models/                 # SQLAlchemy 模型 (7 张表)
 │   │   ├── schemas/                # Pydantic 请求/响应模型
 │   │   ├── routers/                # API 路由 (auth/resume/jd/interview/ws/doc)
-│   │   ├── services/               # 业务逻辑 (出题/引擎/评分/文档/ASR/TTS/缓存)
-│   │   └── utils/                  # 工具函数 (JWT 认证)
+│   │   ├── services/               # 业务逻辑 (出题/引擎/评分/文档/ASR/TTS/缓存/搜索)
+│   │   │   └── search/             # 多源搜索编排 (Serper/Tavily/Bing 内置)
+│   │   └── utils/                  # 工具函数 (JWT 认证、管理员权限)
 │   ├── alembic/                    # 数据库迁移
 │   └── requirements.txt
 ├── frontend/                       # Next.js 前端
 │   ├── Dockerfile                  # 多阶段构建 + 非 root 运行
 │   ├── next.config.js              # Rewrite 代理 + 安全头 + 压缩
 │   └── src/
-│       ├── app/                    # App Router 页面
-│       ├── components/             # 通用组件
+│       ├── app/                    # App Router 页面 (含 admin/ 管理后台)
+│       ├── components/             # 通用组件 (含 admin/ 管理组件)
 │       ├── lib/api.ts              # API 客户端（相对路径，不暴露后端）
+│       ├── types/                  # TypeScript 类型定义
 │       └── store/                  # Zustand 状态管理
 ├── models/                         # FunASR 模型文件（不纳入版本控制）
 └── data/                           # 运行时数据（不纳入版本控制）
@@ -121,12 +128,19 @@ simulatedInterview/
 |------|------|------|
 | `JWT_SECRET` | JWT 签名密钥（生产环境必须修改） | ✅ |
 | `LLM_API_KEY` | 全局兜底 Key（生产环境留空，用户自备） | ❌ |
-| `LLM_API_BASE` | LLM API 地址 | 有用户配置则不需要 |
-| `LLM_MODEL` | LLM 模型名称 | 有用户配置则不需要 |
+| `LLM_API_BASE` | LLM API 地址 | ❌ |
+| `LLM_MODEL` | LLM 模型名称 | ❌ |
+| `FIRST_ADMIN_USERNAME` | 首个管理员用户名（首次启动自动创建） | ❌ |
+| `FIRST_ADMIN_PASSWORD` | 首个管理员密码 | ❌ |
+| `FIRST_ADMIN_EMAIL` | 首个管理员邮箱 | ❌ |
+| `SMTP_HOST` | 邮箱 SMTP 服务器 | 注册验证必填 |
+| `SMTP_USER` / `SMTP_PASSWORD` | SMTP 认证信息 | 注册验证必填 |
 | `ALLOWED_ORIGINS` | CORS 白名单 | 生产建议 |
 | `ASR_MAX_CONCURRENT` | ASR 并发上限（3-5） | 生产建议 |
 | `UVICORN_WORKERS` | Uvicorn worker 数量（2） | 生产建议 |
 | `DB_POOL_SIZE` | 数据库连接池（20） | 生产建议 |
+
+> 搜索 API Key（Serper/Tavily）在管理后台「系统配置」页面配置，不通过环境变量管理。
 
 ### 💡 LLM API Key 设计
 
@@ -134,12 +148,39 @@ simulatedInterview/
 
 **自托管/开发环境：** 可以在 `.env` 配一个全局 Key 作为兜底，未配置个人 Key 的用户自动使用此 Key。
 
+### 🛡 管理后台
+
+管理员登录后侧边栏出现「管理后台」入口，包含：
+
+| 页面 | 功能 |
+|------|------|
+| 管理仪表盘 | 系统统计（总用户/今日面试/7日活跃）+ 最近用户/面试 |
+| 用户管理 | 搜索/分页/详情/设为管理员/禁用/恢复/软删除/硬删除 |
+| 面试管理 | 按类别筛选/分页/删除 |
+| 系统配置 | 搜索 API Key 配置（Serper/Tavily），可视化修改即时生效 |
+
+**创建管理员**：在 `.env` 中设置 `FIRST_ADMIN_USERNAME` / `FIRST_ADMIN_PASSWORD` / `FIRST_ADMIN_EMAIL`，首次启动自动创建。
+
+### 📰 时政搜索（公务员/事业单位）
+
+出题时自动搜索省份近期的时政热点新闻，融入题目场景：
+
+```
+优先级：Serper（Google 结果）→ Tavily（AI 优化）→ 内置 Bing 爬虫（自动兜底）
+```
+
+- 搜索 API Key 在管理后台「系统配置」页面配置，存入数据库，无需修改 `.env`
+- 所有搜索源免费（Serper 2,500 次 / Tavily 1,000 次/月 / 内置 Bing 无限）
+- 全部故障时自动降级为 LLM 基于训练知识出题
+
 ### 生产部署安全清单
 
 - [ ] `JWT_SECRET` 已改为强随机值 (`openssl rand -hex 32`)
 - [ ] `.env` 中 `LLM_API_KEY` 已**留空**（生产环境用户自备 Key）
+- [ ] `FIRST_ADMIN_USERNAME` / `FIRST_ADMIN_PASSWORD` 已配置（创建管理员账号）
+- [ ] SMTP 邮箱配置已完成（注册验证 + 忘记密码）
 - [ ] `ALLOWED_ORIGINS` 已设为实际域名
-- [ ] HTTPS 已配置（nginx/Caddy 反向代理）
+- [ ] HTTPS 已配置（nginx 反向代理）
 
 ## 🖥 服务器选型
 
@@ -153,13 +194,14 @@ simulatedInterview/
 
 ## 📊 数据模型
 
-- **User** — 用户信息（含 JWT 认证）
+- **User** — 用户信息（含 JWT 认证、邮箱验证、管理员角色、禁用/软删除标记）
 - **Resume** — 简历（上传 + 解析结果）
 - **JobDescription** — 岗位介绍（JD）
-- **Interview** — 面试会话（含总分、维度评分、总评、类别配置）
+- **Interview** — 面试会话（含总分、维度评分、总评、类别配置、评分状态）
 - **InterviewQuestion** — 面试题目（含回答、逐题评分、参考答案、TTS 缓存路径）
 - **InterviewDocument** — 导出的文档记录
 - **FavoritedQuestion** — 收藏的题目
+- **SystemConfig** — 系统配置（Key-Value，搜索 API Key 等）
 
 ## ⚡ 性能优化
 
