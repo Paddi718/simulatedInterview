@@ -126,8 +126,12 @@ function SessionContent() {
   const stoppingManuallyRef = useRef(false);
   const recordingGenRef = useRef(0); // 录音代际，防止旧 SR 事件污染新会话
   const mountedRef = useRef(true); // 组件生命周期标记，防止卸载后异步回调执行
+  const audioCtxRef = useRef<AudioContext|null>(null);  // 手机端 AudioContext
+  const scriptNodeRef = useRef<ScriptProcessorNode|null>(null);  // 手机端 PCM 捕获
+  const streamingGenRef = useRef(0);  // 流式代际
 
   const stopAll = () => {
+    stopStreamingASR();
     if (speechRef.current) { try { speechRef.current.abort(); } catch {} speechRef.current = null; }
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') { try { mediaRecorderRef.current.stop(); } catch {} }
     if (streamRef.current) { streamRef.current.getTracks().forEach(t=>t.stop()); streamRef.current = null; }
@@ -213,6 +217,10 @@ function SessionContent() {
         try{const m=JSON.parse(e.data);
           if(m.type==='question_score'&&!m.error){setFeedback(m);setPhase('feedback');}
           else if(m.type==='question_score'&&m.error)setPhase('review');
+          else if(m.type==='transcript_segment'){
+            liveTextRef.current+=m.text||'';
+            if(liveTextElRef.current) liveTextElRef.current.textContent=liveTextRef.current;
+          }
         }catch{}
       };
       ws.onclose=()=>{setWsConnected(false);wsRef.current=null;};
@@ -469,6 +477,58 @@ function SessionContent() {
     return ()=>{if(thinkingRef.current){clearInterval(thinkingRef.current);thinkingRef.current=null;}};
   },[phase,currentIndex,questions,ttsPlaying,audioLoading]);
 
+  /* ---------- Streaming ASR (手机端 — AudioContext PCM) ---------- */
+  const startStreamingASR = useCallback(async (existingStream?: MediaStream) => {
+    const stream = existingStream || await navigator.mediaDevices.getUserMedia({ audio: true });
+    if (!existingStream) streamRef.current = stream;
+    const ctx = new AudioContext({ sampleRate: 16000 });
+    audioCtxRef.current = ctx;
+    const src = ctx.createMediaStreamSource(stream);
+
+    // ScriptProcessorNode — 兼容所有移动浏览器
+    const node = ctx.createScriptProcessor(1024, 1, 1);
+    scriptNodeRef.current = node;
+
+    const myGen = ++streamingGenRef.current;
+    const ws = wsRef.current;
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'audio_stream_start' }));
+    }
+
+    node.onaudioprocess = (e: AudioProcessingEvent) => {
+      if (streamingGenRef.current !== myGen) return;
+      const input = e.inputBuffer.getChannelData(0);
+      // float32 → int16 PCM
+      const int16 = new Int16Array(input.length);
+      for (let i = 0; i < input.length; i++) {
+        const s = Math.max(-1, Math.min(1, input[i]));
+        int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+      }
+      const w = wsRef.current;
+      if (w?.readyState === WebSocket.OPEN) {
+        w.send(JSON.stringify({
+          type: 'audio_chunk',
+          data: btoa(String.fromCharCode(...new Uint8Array(int16.buffer))),
+        }));
+      }
+    };
+
+    src.connect(node);
+    // 不 connect destination — 避免回声和反馈噪音
+  }, []);
+
+  const stopStreamingASR = useCallback(() => {
+    streamingGenRef.current++;
+    if (scriptNodeRef.current) {
+      try { scriptNodeRef.current.disconnect(); } catch {}
+      scriptNodeRef.current = null;
+    }
+    if (audioCtxRef.current) {
+      try { audioCtxRef.current.close(); } catch {}
+      audioCtxRef.current = null;
+    }
+  }, []);
+
   /* ---------- Recording ---------- */
   const startRecording=useCallback(async()=>{
     // 立即停止 TTS 朗读，防止题目音频被录入麦克风
@@ -490,6 +550,10 @@ function SessionContent() {
     const SR=createSR();if(!SR)setHasSpeechAPI(false);
     try{
       const stream=await navigator.mediaDevices.getUserMedia({audio:true});streamRef.current=stream;
+      // 手机端：SpeechRecognition 不可用 → 启动 AudioContext PCM 流式转写
+      if(!SR){
+        startStreamingASR(stream).catch(()=>{});
+      }
       if(SR){speechRef.current=SR;
         SR.onresult=(e:any)=>{
           // 代际检查：防止旧 SR 事件污染新录音
@@ -564,7 +628,9 @@ function SessionContent() {
 
   const stopRecording=useCallback(()=>{
     stoppingManuallyRef.current=true;
-    // 1. 先停止 SpeechRecognition，立即触发 onend 和最终 onresult 事件 flush
+    // 1. 停止 AudioContext 流式转写（手机端）
+    stopStreamingASR();
+    // 2. 停止 SpeechRecognition，立即触发 onend 和最终 onresult 事件 flush
     if(speechRef.current){try{speechRef.current.stop();}catch{}}
     // 2. 延迟停止 MediaRecorder，确保 SR 最终结果已在 liveTextRef 中
     setTimeout(()=>{

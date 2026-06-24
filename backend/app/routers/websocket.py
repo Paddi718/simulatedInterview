@@ -1,9 +1,10 @@
 """
-WebSocket — 面试 TTS + 答题
-简化版：只处理 TTS 语音合成和答题提交
+WebSocket — 面试 TTS + 答题 + 流式音频转写
 """
 import json
 import uuid
+import base64
+import asyncio
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from app.database import async_session_factory
 from app.services.tts_service import synthesize_speech
@@ -36,6 +37,11 @@ async def interview_websocket(websocket: WebSocket, interview_id: str):
         await websocket.close()
         return
 
+    # 流式转写状态（每连接独立）
+    vad = None
+    vad_state = None
+    asr_lock = asyncio.Lock()
+
     try:
         while True:
             message = await websocket.receive()
@@ -47,6 +53,34 @@ async def interview_websocket(websocket: WebSocket, interview_id: str):
 
             if msg_type == "ping":
                 await websocket.send_json({"type": "pong"})
+
+            # ── 流式音频转写 ──────────────────────────────────
+            elif msg_type == "audio_stream_start":
+                from app.services.vad_service import get_vad
+                vad = get_vad()
+                vad_state = vad.reset_state()
+
+            elif msg_type == "audio_chunk":
+                if vad is None or vad_state is None:
+                    continue
+                # 解码 base64 PCM（16kHz, 16bit, mono）
+                try:
+                    pcm = base64.b64decode(data.get("data", ""))
+                except Exception:
+                    continue
+                if not pcm:
+                    continue
+                vad.process_pcm(vad_state, pcm)
+
+                # VAD 检测到说话结束 → 触发 ASR
+                if vad_state.get("client_voice_stop"):
+                    voice_pcm = vad.get_voice_pcm(vad_state)
+                    vad.mark_voice_consumed(vad_state)
+                    if len(voice_pcm) < 3200:  # 少于 100ms，忽略
+                        continue
+                    # 异步处理（不阻塞 WS 消息循环）
+                    asyncio.create_task(_process_voice_segment(
+                        websocket, voice_pcm, asr_lock))
 
             elif msg_type == "tts_request":
                 text = data.get("text", "")
@@ -91,6 +125,32 @@ async def interview_websocket(websocket: WebSocket, interview_id: str):
             await websocket.send_json({"type": "error", "message": str(e)})
         except Exception:
             pass
+
+
+async def _process_voice_segment(
+    websocket: WebSocket, voice_pcm: bytes, asr_lock: asyncio.Lock
+):
+    """后台任务：处理 VAD 检测到的语音段 → ASR 转写 → 推回前端"""
+    async with asr_lock:
+        try:
+            from app.services.asr_service import transcribe_pcm, _get_asr_semaphore
+
+            sem = _get_asr_semaphore()
+            if sem:
+                async with sem:
+                    text = await transcribe_pcm(voice_pcm, "zh")
+            else:
+                text = await transcribe_pcm(voice_pcm, "zh")
+
+            text = (text or "").strip()
+            if text:
+                await websocket.send_json({
+                    "type": "transcript_segment",
+                    "text": text,
+                    "is_final": True,
+                })
+        except Exception:
+            pass  # 静默失败，下一段语音会重试
 
 
 async def _score_single_question(db, interview_id: uuid.UUID, order_index: int) -> dict:

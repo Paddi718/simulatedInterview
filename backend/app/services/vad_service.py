@@ -63,7 +63,8 @@ class SileroVAD:
             "client_have_voice": False,
             "client_voice_stop": False,
             "vad_last_voice_time": 0.0,
-            "pcm_buffer": bytearray(),
+            "pcm_buffer": bytearray(),       # 内部帧对齐缓冲
+            "voice_pcm": bytearray(),         # 当前语音段的全部 PCM
         }
 
     def process_pcm(self, vad_state: dict, pcm_chunk: bytes) -> dict:
@@ -72,6 +73,7 @@ class SileroVAD:
         更新并返回 VAD 状态
         """
         vad_state["pcm_buffer"].extend(pcm_chunk)
+        vad_state["voice_pcm"].extend(pcm_chunk)  # 累计语音段 PCM
 
         client_have_voice = False
 
@@ -127,6 +129,16 @@ class SileroVAD:
                 vad_state["vad_last_voice_time"] = time.time() * 1000
 
         return vad_state
+
+    def get_voice_pcm(self, vad_state: dict) -> bytes:
+        """返回当前语音段累积的全部 PCM，不重置状态"""
+        return bytes(vad_state["voice_pcm"])
+
+    def mark_voice_consumed(self, vad_state: dict):
+        """清空语音 PCM 缓冲并重置 stop 标记（ASR 处理完后调用）"""
+        vad_state["voice_pcm"] = bytearray()
+        vad_state["client_voice_stop"] = False
+        vad_state["client_have_voice"] = False
 
 
 # 单例
