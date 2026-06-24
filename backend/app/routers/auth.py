@@ -29,15 +29,19 @@ async def register(data: UserCreate, db: AsyncSession = Depends(get_db)):
 
     # 生成验证码
     from app.services.email_service import send_verification_email
-    code = await send_verification_email(data.email) if data.email else None
+    code = None
+    if data.email:
+        code = await send_verification_email(data.email)
+        if not code:
+            raise HTTPException(status_code=500, detail="验证码发送失败，请稍后重试")
 
     expires = datetime.now(timezone.utc) + timedelta(minutes=VERIFICATION_CODE_EXPIRE_MINUTES)
 
     user = User(
         username=data.username,
         password_hash=hash_password(data.password),
-        email=data.email,
-        is_verified=(code is None),  # 无邮箱时直接通过
+        email=data.email if data.email else None,
+        is_verified=(not data.email),  # 有邮箱则需要验证，无邮箱直接通过
         verification_code=code,
         verification_code_expires_at=expires if code else None,
     )
