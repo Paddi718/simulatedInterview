@@ -506,9 +506,14 @@ function SessionContent() {
       }
       const w = wsRef.current;
       if (w?.readyState === WebSocket.OPEN) {
+        const bytes = new Uint8Array(int16.buffer);
+        let binary = '';
+        for (let i = 0; i < bytes.length; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
         w.send(JSON.stringify({
           type: 'audio_chunk',
-          data: btoa(String.fromCharCode(...new Uint8Array(int16.buffer))),
+          data: btoa(binary),
         }));
       }
     };
