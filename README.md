@@ -133,8 +133,8 @@ simulatedInterview/
 | `FIRST_ADMIN_USERNAME` | 首个管理员用户名（首次启动自动创建） | ❌ |
 | `FIRST_ADMIN_PASSWORD` | 首个管理员密码 | ❌ |
 | `FIRST_ADMIN_EMAIL` | 首个管理员邮箱 | ❌ |
-| `SMTP_HOST` | 邮箱 SMTP 服务器 | 注册验证必填 |
-| `SMTP_USER` / `SMTP_PASSWORD` | SMTP 认证信息 | 注册验证必填 |
+| `SMTP_HOST` | 邮箱 SMTP 服务器 | 可在管理后台配置 |
+| `SMTP_USER` / `SMTP_PASSWORD` | SMTP 认证信息 | 可在管理后台配置 |
 | `ALLOWED_ORIGINS` | CORS 白名单 | 生产建议 |
 | `ASR_MAX_CONCURRENT` | ASR 并发上限（3-5） | 生产建议 |
 | `UVICORN_WORKERS` | Uvicorn worker 数量（2） | 生产建议 |
@@ -157,7 +157,7 @@ simulatedInterview/
 | 管理仪表盘 | 系统统计（总用户/今日面试/7日活跃）+ 最近用户/面试 |
 | 用户管理 | 搜索/分页/详情/设为管理员/禁用/恢复/软删除/硬删除 |
 | 面试管理 | 按类别筛选/分页/删除 |
-| 系统配置 | 搜索 API Key 配置（Serper/Tavily），可视化修改即时生效 |
+| 系统配置 | 搜索 Key + 邮箱 SMTP 配置，可视化修改即时生效 |
 
 **创建管理员**：在 `.env` 中设置 `FIRST_ADMIN_USERNAME` / `FIRST_ADMIN_PASSWORD` / `FIRST_ADMIN_EMAIL`，首次启动自动创建。
 
