@@ -72,6 +72,7 @@ export default function SettingsPage() {
   const [apiSaving, setApiSaving] = useState(false);
   const [apiDone, setApiDone] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [hasExistingKey, setHasExistingKey] = useState(false);
 
   // ── Load ──
   useEffect(() => {
@@ -101,9 +102,13 @@ export default function SettingsPage() {
           setAutoRead(u.tts_preference.auto_read);
       }
       if (u.llm_config) {
-        // 服务端脱敏返回 "***"，不要覆盖用户正在编辑的值
         const key = u.llm_config.api_key || '';
-        if (key && key !== '***') setApiKey(key);
+        if (key === '***') {
+          setHasExistingKey(true);  // 已配置但脱敏，不清空字段
+        } else {
+          setHasExistingKey(false);
+          if (key) setApiKey(key);
+        }
         setApiBase(u.llm_config.api_base || '');
         setApiModel(u.llm_config.model || '');
       }
@@ -498,12 +503,17 @@ export default function SettingsPage() {
               自定义 LLM API，留空则使用系统默认配置。你的密钥将加密存储在服务端。
             </p>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">API Key</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                API Key
+                {hasExistingKey && !apiKey && (
+                  <span className="text-green-600 dark:text-green-400 font-normal text-xs ml-1">✓ 已保存（安全隐藏）</span>
+                )}
+              </label>
               <div className="relative">
                 <input
                   type={showKey ? 'text' : 'password'} value={apiKey}
-                  onChange={(e) => setApiKey(e.target.value)}
-                  placeholder="sk-..."
+                  onChange={(e) => { setApiKey(e.target.value); setHasExistingKey(false); }}
+                  placeholder={hasExistingKey ? '留空则不修改已保存的 Key' : 'sk-...'}
                   className="w-full px-3 py-2 pr-16 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm font-mono focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 outline-none transition-all"
                 />
                 <button
