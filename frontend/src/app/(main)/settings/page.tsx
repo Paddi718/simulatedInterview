@@ -101,7 +101,9 @@ export default function SettingsPage() {
           setAutoRead(u.tts_preference.auto_read);
       }
       if (u.llm_config) {
-        setApiKey(u.llm_config.api_key || '');
+        // 服务端脱敏返回 "***"，不要覆盖用户正在编辑的值
+        const key = u.llm_config.api_key || '';
+        if (key && key !== '***') setApiKey(key);
         setApiBase(u.llm_config.api_base || '');
         setApiModel(u.llm_config.model || '');
       }
@@ -177,9 +179,15 @@ export default function SettingsPage() {
   const saveAPI = async () => {
     setApiSaving(true);
     try {
-      await api.put('/api/auth/me', {
-        llm_config: { api_key: apiKey, api_base: apiBase, model: apiModel },
-      });
+      // 如果 Key 是掩码值 *** 或为空，不传 api_key（保留已存值）
+      const config: Record<string, string> = {
+        api_base: apiBase,
+        model: apiModel,
+      };
+      if (apiKey && apiKey !== '***') {
+        config.api_key = apiKey;
+      }
+      await api.put('/api/auth/me', { llm_config: config });
       flash(setApiDone);
     } catch (err: any) {
       alert(err.message || '保存失败');

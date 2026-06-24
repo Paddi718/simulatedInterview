@@ -249,7 +249,10 @@ async def update_me(
     if data.tts_preference is not None:
         current_user.tts_preference = data.tts_preference
     if data.llm_config is not None:
-        current_user.llm_config = data.llm_config
+        # 合并而非覆盖：保留未传的字段
+        existing = current_user.llm_config or {}
+        merged = {**existing, **{k: v for k, v in data.llm_config.items() if v and v != "***"}}
+        current_user.llm_config = merged
     await db.commit()
     await db.refresh(current_user)
     return _user_response(current_user)
