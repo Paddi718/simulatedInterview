@@ -149,8 +149,10 @@ async def _process_voice_segment(
                     "text": text,
                     "is_final": True,
                 })
-        except Exception:
-            pass  # 静默失败，下一段语音会重试
+        except Exception as e:
+            import traceback
+            print(f"[ASR stream] Error: {e}")
+            traceback.print_exc()
 
 
 async def _score_single_question(db, interview_id: uuid.UUID, order_index: int) -> dict:
