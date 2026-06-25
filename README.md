@@ -36,11 +36,11 @@
 | 后端 | Python FastAPI, SQLAlchemy 2.0 (async), Alembic, Jinja2 |
 | 数据库 | PostgreSQL 15 |
 | 缓存 | Redis 7 |
-| AI | DeepSeek API（出题 + 评分） |
+| AI | 兼容 OpenAI 接口（DeepSeek / 通义千问 / GLM / Kimi 等），出题 + 评分 |
 | 语音识别 | 硅基流动在线 ASR（FunAudioLLM/SenseVoiceSmall） / 本地 FunASR（开发可选） |
 | 语音合成 | 微软 Edge TTS（免费） |
 | 搜索 | Serper / Tavily / 内置 Bing 爬虫（免费，多源兜底） |
-| 邮件 | QQ 邮箱 SMTP（验证码发送） |
+| 邮件 | SMTP（QQ / 163 / Gmail / 企业邮箱等，验证码发送） |
 | 部署 | Docker Compose + BuildKit 缓存 + nginx 反向代理 + Let's Encrypt |
 
 ## 🚀 快速开始
@@ -134,12 +134,16 @@ simulatedInterview/
 | `JWT_SECRET` | JWT 签名密钥（生产环境必须修改） | ✅ |
 | `LLM_API_KEY` | 全局兜底 Key（生产环境留空，用户自备） | ❌ |
 | `LLM_API_BASE` | LLM API 地址 | ❌ |
-| `LLM_MODEL` | LLM 模型名称 | ❌ |
+| `LLM_MODEL` | LLM 模型名称（如 `deepseek-chat`、`qwen-plus`） | ❌ |
+| `ASR_PROVIDER` | ASR 后端（`siliconflow` / `local`） | 可在管理后台配置 |
+| `ASR_SILICONFLOW_API_KEY` | 硅基流动 API Key | 可在管理后台配置 |
 | `FIRST_ADMIN_USERNAME` | 首个管理员用户名（首次启动自动创建） | ❌ |
 | `FIRST_ADMIN_PASSWORD` | 首个管理员密码 | ❌ |
 | `FIRST_ADMIN_EMAIL` | 首个管理员邮箱 | ❌ |
-| `SMTP_HOST` | 邮箱 SMTP 服务器 | 可在管理后台配置 |
-| `SMTP_USER` / `SMTP_PASSWORD` | SMTP 认证信息 | 可在管理后台配置 |
+| `SMTP_HOST` | 邮箱 SMTP 服务器（如 `smtp.qq.com`） | 可在管理后台配置 |
+| `SMTP_PORT` | SMTP 端口（QQ: 465，其他: 587 等） | 可在管理后台配置 |
+| `SMTP_USER` / `SMTP_PASSWORD` | SMTP 认证信息（密码/授权码） | 可在管理后台配置 |
+| `SMTP_FROM` | 发件人地址（通常与 SMTP_USER 相同） | 可在管理后台配置 |
 | `ALLOWED_ORIGINS` | CORS 白名单 | 生产建议 |
 | `ASR_MAX_CONCURRENT` | ASR 并发上限（3-5） | 生产建议 |
 | `UVICORN_WORKERS` | Uvicorn worker 数量（2） | 生产建议 |
@@ -149,7 +153,7 @@ simulatedInterview/
 
 ### 💡 LLM API Key 设计
 
-**生产环境：每个用户自带 Key。** 用户注册后去「设置」页配置自己的 DeepSeek API Key，出题和评分的费用由各用户承担。没有配置 Key 时创建面试会提示「请先在设置页配置 API Key」。
+**生产环境：每个用户自带 Key。** 用户注册后去「设置」页配置自己的 LLM API Key（兼容 OpenAI 接口的模型均可，如 DeepSeek、通义千问、GLM、Kimi 等），出题和评分的费用由各用户承担。没有配置 Key 时创建面试会提示「请先在设置页配置 API Key」。
 
 **自托管/开发环境：** 可以在 `.env` 配一个全局 Key 作为兜底，未配置个人 Key 的用户自动使用此 Key。
 
@@ -204,8 +208,9 @@ simulatedInterview/
 - [ ] `.env` 中 `LLM_API_KEY` 已**留空**（生产环境用户自备 Key）
 - [ ] `FIRST_ADMIN_USERNAME` / `FIRST_ADMIN_PASSWORD` 已配置（创建管理员账号）
 - [ ] SMTP 邮箱配置已完成（注册验证 + 忘记密码）
+- [ ] ASR 配置已设（管理后台「语音转文字」→ 在线模式 + API Key）
 - [ ] `ALLOWED_ORIGINS` 已设为实际域名
-- [ ] HTTPS 已配置（nginx 反向代理）
+- [ ] HTTPS 证书已配置（Let's Encrypt）
 
 ## 🖥 服务器选型
 
