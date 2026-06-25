@@ -4,8 +4,7 @@ import os
 from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from email.mime.base import MIMEBase
-from email import encoders
+from email.mime.application import MIMEApplication
 
 
 async def _read_db_config(key: str) -> str | None:
@@ -248,19 +247,18 @@ async def send_report_email(to_email: str, pdf_path: str, interview) -> bool:
     </body></html>"""
     msg.attach(MIMEText(html_body, "html", "utf-8"))
 
-    # PDF 附件
+    # PDF 附件（MIMEApplication 自动处理中文文件名编码）
     try:
         with open(pdf_path, "rb") as f:
             pdf_data = f.read()
     except Exception:
         return False
 
-    attachment = MIMEBase("application", "pdf")
-    attachment.set_payload(pdf_data)
-    encoders.encode_base64(attachment)
+    attachment = MIMEApplication(pdf_data, _subtype="pdf")
     attachment.add_header(
         "Content-Disposition",
-        f'attachment; filename="{_os.path.basename(pdf_path)}"',
+        "attachment",
+        filename=_os.path.basename(pdf_path),
     )
     msg.attach(attachment)
 
