@@ -85,8 +85,15 @@ async function downloadBlob(endpoint: string): Promise<{ blob: Blob; filename: s
     throw new ApiError('Download failed', res.status);
   }
   const disposition = res.headers.get('Content-Disposition') || '';
-  const match = disposition.match(/filename="?(.+?)"?$/);
-  const filename = match ? match[1] : 'download';
+  // 优先取 RFC 5987 filename*=UTF-8''xxx（中文名），其次取普通 filename=
+  const starMatch = disposition.match(/filename\*=UTF-8''([^;]+)/);
+  let filename = 'download';
+  if (starMatch) {
+    filename = decodeURIComponent(starMatch[1]);
+  } else {
+    const match = disposition.match(/filename="?(.+?)"?$/);
+    if (match) filename = match[1];
+  }
   const blob = await res.blob();
   return { blob, filename };
 }
