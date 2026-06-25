@@ -34,6 +34,28 @@ async def get_current_user(
     db: AsyncSession = Depends(get_db),
 ) -> User:
     token = credentials.credentials
+    return await _verify_token(token, db)
+
+
+# 兼容 window.open() / <a href>：支持 token 通过 query 参数传入
+security_optional = HTTPBearer(auto_error=False)
+
+
+async def get_current_user_query(
+    credentials: HTTPAuthorizationCredentials | None = Depends(security_optional),
+    token: str | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    if credentials:
+        t = credentials.credentials
+    elif token:
+        t = token
+    else:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing token")
+    return await _verify_token(t, db)
+
+
+async def _verify_token(token: str, db: AsyncSession) -> User:
     try:
         payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
         user_id = payload.get("sub")

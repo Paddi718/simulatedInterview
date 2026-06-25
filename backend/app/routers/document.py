@@ -6,7 +6,7 @@ from sqlalchemy import select
 from app.database import get_db
 from app.models.user import User
 from app.models.interview import Interview
-from app.utils.auth import get_current_user
+from app.utils.auth import get_current_user, get_current_user_query
 from app.services.document_service import generate_document
 from app.config import get_settings
 
@@ -39,7 +39,7 @@ async def create_document(
 async def download_document(
     interview_id: uuid.UUID,
     fmt: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_query),
     db: AsyncSession = Depends(get_db),
 ):
     if fmt not in ("md", "html", "pdf", "docx"):
