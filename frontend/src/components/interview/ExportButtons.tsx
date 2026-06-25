@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { FileText, FileDown, Globe, FileCode, Loader2, Printer } from 'lucide-react';
 import { api } from '@/lib/api';
 
@@ -17,15 +18,14 @@ const FORMATS: Record<string, { label: string; icon: typeof FileText }> = {
 export default function ExportButtons({ interviewId }: ExportButtonsProps) {
   const [loading, setLoading] = useState<string | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const router = useRouter();
 
   // PDF：先确保文件已生成，然后新标签页打开预览
   const handlePdfPreview = async () => {
     setPdfLoading(true);
     try {
       await api.post<{ filepath: string; format: string }>(`/api/interview/${interviewId}/document/pdf`);
-      // 直接打开下载 URL，浏览器内建 PDF 预览器会渲染
       const token = localStorage.getItem('access_token');
-      // 拼接带 token 的下载 URL（GET 接口需要认证，通过 query 传 token）
       const url = `/api/interview/${interviewId}/document/pdf?token=${token}`;
       window.open(url, '_blank');
     } catch (err: any) {
@@ -51,9 +51,9 @@ export default function ExportButtons({ interviewId }: ExportButtonsProps) {
     } finally { setLoading(null); }
   };
 
-  // 浏览器原生打印 / 另存为 PDF
+  // 跳转到打印专用页面（题目全展开、无UI干扰、自动弹打印对话框）
   const handlePrint = () => {
-    window.print();
+    router.push(`/interview/print/${interviewId}`);
   };
 
   return (

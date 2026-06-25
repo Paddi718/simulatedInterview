@@ -57,8 +57,11 @@ async def download_document(
     import os
     media_type_map = {"md": "text/markdown", "html": "text/html", "pdf": "application/pdf", "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
     filename = os.path.basename(filepath)
+    # PDF 用 inline 让浏览器预览而非强制下载；其他格式仍 attachment
+    disposition = "inline" if fmt == "pdf" else "attachment"
     return FileResponse(
         filepath,
         media_type=media_type_map.get(fmt, "application/octet-stream"),
         filename=filename,
+        content_disposition_type=disposition,
     )
