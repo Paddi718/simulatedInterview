@@ -1,4 +1,5 @@
 import uuid
+import os
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,9 +18,11 @@ router = APIRouter(prefix="/api/interview", tags=["document"])
 async def create_document(
     interview_id: uuid.UUID,
     fmt: str,
+    generate_only: bool = False,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """生成文档。generate_only=true 时只生成不返回路径（供后续邮箱发送等使用）。"""
     if fmt not in ("md", "html", "pdf", "docx"):
         raise HTTPException(status_code=400, detail="Format must be md, html, pdf, or docx")
 
@@ -32,6 +35,8 @@ async def create_document(
     settings = get_settings()
     filepath = await generate_document(db, interview_id, fmt, settings.document_storage_path)
 
+    if generate_only:
+        return {"code": 0, "data": {"ok": True}, "message": "ok"}
     return {"code": 0, "data": {"filepath": filepath, "format": fmt}, "message": "ok"}
 
 
@@ -54,14 +59,48 @@ async def download_document(
     settings = get_settings()
     filepath = await generate_document(db, interview_id, fmt, settings.document_storage_path)
 
-    import os
     media_type_map = {"md": "text/markdown", "html": "text/html", "pdf": "application/pdf", "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
     filename = os.path.basename(filepath)
-    # PDF 用 inline 让浏览器预览而非强制下载；其他格式仍 attachment
-    disposition = "inline" if fmt == "pdf" else "attachment"
     return FileResponse(
         filepath,
         media_type=media_type_map.get(fmt, "application/octet-stream"),
         filename=filename,
-        content_disposition_type=disposition,
     )
+
+
+@router.post("/{interview_id}/document/email")
+async def send_document_email(
+    interview_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """生成 PDF 报告并发送到用户邮箱。SMTP 未配置时返回 503。"""
+    from app.services.email_service import is_smtp_configured, send_report_email
+
+    if not await is_smtp_configured():
+        raise HTTPException(status_code=503, detail="邮件服务未配置，请联系管理员")
+
+    result = await db.execute(
+        select(Interview)
+        .where(Interview.id == interview_id, Interview.user_id == current_user.id)
+        .options(__import__('sqlalchemy.orm', fromlist=['selectinload']).selectinload(Interview.questions))
+    )
+    interview = result.scalar_one_or_none()
+    if not interview:
+        raise HTTPException(status_code=404, detail="Interview not found")
+
+    settings = get_settings()
+    pdf_path = await generate_document(db, interview_id, "pdf", settings.document_storage_path)
+
+    # 获取用户邮箱
+    user_result = await db.execute(select(User).where(User.id == current_user.id))
+    user = user_result.scalar_one_or_none()
+    email = (user.email or '').strip() if user else ''
+    if not email:
+        raise HTTPException(status_code=400, detail="您的账号未绑定邮箱，请先在设置页添加邮箱")
+
+    success = await send_report_email(email, pdf_path, interview)
+    if not success:
+        raise HTTPException(status_code=500, detail="邮件发送失败，请稍后重试")
+
+    return {"code": 0, "data": None, "message": f"面试报告已发送至 {email}"}

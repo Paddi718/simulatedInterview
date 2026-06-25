@@ -4,6 +4,8 @@ import os
 from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
 
 
 async def _read_db_config(key: str) -> str | None:
@@ -208,3 +210,62 @@ async def send_verification_email(to_email: str, scenario: str = "register") -> 
     except Exception as e:
         print(f"[Email] Failed to send: {e}")
         return None
+
+
+async def send_report_email(to_email: str, pdf_path: str, interview) -> bool:
+    """发送面试报告 PDF 到用户邮箱。成功返回 True，失败返回 False。"""
+    import os as _os
+    cfg = await _get_smtp_config()
+    if not cfg["user"] or not cfg["password"]:
+        return False
+
+    msg = MIMEMultipart()
+    msg["From"] = cfg["from"] or cfg["user"]
+    msg["To"] = to_email
+    msg["Subject"] = "AI 模拟面试 - 面试报告"
+
+    # 正文
+    cat = getattr(interview, 'interview_category', 'private_enterprise') or 'private_enterprise'
+    cat_labels = {"private_enterprise": "私企面试", "civil_service": "公务员面试", "institution": "事业单位面试"}
+    cat_label = cat_labels.get(cat, "面试")
+    score = getattr(interview, 'total_score', None)
+    score_text = f"{score} 分" if score is not None else "未评分"
+    html_body = f"""<html><body style="font-family:system-ui,sans-serif;padding:20px;color:#333">
+    <h2 style="color:#6366f1">AI 模拟面试报告</h2>
+    <p>您好，</p>
+    <p>您的<b>{cat_label}</b>面试报告已生成，详见附件 PDF。</p>
+    <p>总分：<b style="color:#6366f1;font-size:20px">{score_text}</b></p>
+    <p style="color:#999;font-size:12px;margin-top:30px">由 AI 模拟面试系统自动发送</p>
+    </body></html>"""
+    msg.attach(MIMEText(html_body, "html", "utf-8"))
+
+    # PDF 附件
+    try:
+        with open(pdf_path, "rb") as f:
+            pdf_data = f.read()
+    except Exception:
+        return False
+
+    attachment = MIMEBase("application", "pdf")
+    attachment.set_payload(pdf_data)
+    encoders.encode_base64(attachment)
+    attachment.add_header(
+        "Content-Disposition",
+        f'attachment; filename="{_os.path.basename(pdf_path)}"',
+    )
+    msg.attach(attachment)
+
+    try:
+        port = int(cfg["port"])
+        if port == 465:
+            server = smtplib.SMTP_SSL(cfg["host"], port, timeout=15)
+        else:
+            server = smtplib.SMTP(cfg["host"], port, timeout=15)
+            server.starttls()
+        server.login(cfg["user"], cfg["password"])
+        server.sendmail(msg["From"], [to_email], msg.as_string())
+        server.quit()
+        return True
+    except Exception as e:
+        print(f"[Email] Failed to send report: {e}")
+        return False
