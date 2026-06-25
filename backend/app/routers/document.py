@@ -105,8 +105,12 @@ async def download_document(
 
     media_type_map = {"md": "text/markdown", "html": "text/html", "pdf": "application/pdf", "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
     filename = os.path.basename(filepath)
+    # RFC 5987 编码中文文件名
+    from urllib.parse import quote
+    encoded_filename = quote(filename)
     return FileResponse(
         filepath,
         media_type=media_type_map.get(fmt, "application/octet-stream"),
         filename=filename,
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"},
     )
