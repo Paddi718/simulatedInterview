@@ -563,7 +563,7 @@ async def create_interview(
         difficulty=data.difficulty if category != "civil_service" else "mid",
         interview_category=category,
         category_config=cfg,
-        question_count=data.question_count,
+        question_count=total_count,
         status="generating",  # 流式生成中
     )
     db.add(interview)

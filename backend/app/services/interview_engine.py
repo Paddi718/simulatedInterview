@@ -84,7 +84,7 @@ class InterviewEngine:
             difficulty=difficulty if category != "civil_service" else "mid",
             interview_category=category,
             category_config=cfg,
-            question_count=question_count,
+            question_count=count,
             status="preparing",
         )
         db.add(interview)
