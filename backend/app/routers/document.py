@@ -106,14 +106,14 @@ async def download_document(
     media_type_map = {"md": "text/markdown", "html": "text/html", "pdf": "application/pdf", "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document"}
     from urllib.parse import quote
     filename = os.path.basename(filepath)
-    # ASCII 回退名 + RFC 5987 中文名（双保险兼容所有浏览器）
-    ascii_name = "interview_report." + fmt
-    encoded = quote(filename)
-    return FileResponse(
-        filepath,
+    ascii_fallback = f"interview_report.{fmt}"
+    encoded = quote(filename, safe="")
+    content = open(filepath, "rb").read()
+    from starlette.responses import Response
+    return Response(
+        content=content,
         media_type=media_type_map.get(fmt, "application/octet-stream"),
-        filename=filename,
         headers={
-            "Content-Disposition": f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{encoded}",
+            "Content-Disposition": f"attachment; filename=\"{ascii_fallback}\"; filename*=UTF-8''{encoded}",
         },
     )
