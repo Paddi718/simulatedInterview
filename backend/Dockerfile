@@ -3,7 +3,7 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# 系统依赖（weasyprint PDF 生成 + ffmpeg 音频转换）
+# 系统依赖（weasyprint PDF 生成 + 中文字体 + ffmpeg 音频转换）
 # 中国大陆构建: docker compose build --build-arg USE_CHINA_MIRROR=true
 ARG USE_CHINA_MIRROR=false
 ARG PIP_MIRROR=
@@ -21,6 +21,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
         libffi-dev \
         shared-mime-info \
         ffmpeg \
+        fonts-wqy-microhei \
         curl \
     && rm -rf /var/lib/apt/lists/*
 

@@ -69,6 +69,7 @@ def _find_chinese_font() -> str | None:
         ]
     else:
         candidates = [
+            '/usr/share/fonts/truetype/wqy/wqy-microhei.ttc',
             '/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc',
             '/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf',
             '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
