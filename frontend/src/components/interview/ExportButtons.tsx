@@ -32,8 +32,16 @@ export default function ExportButtons({ interviewId }: ExportButtonsProps) {
     setLoading('email');
     try {
       await api.post(`/api/interview/${interviewId}/document/pdf?generate_only=true`);
-      const result = await api.post<{ message: string }>(`/api/interview/${interviewId}/document/email`);
-      alert(result.message || '已发送');
+      const res = await fetch(`/api/interview/${interviewId}/document/email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+        },
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.detail || json.message || '发送失败');
+      alert(json.message || '已发送');
     } catch (err: any) {
       alert('发送失败：' + (err.message || '未知错误'));
     } finally { setLoading(null); }

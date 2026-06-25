@@ -177,6 +177,16 @@ def _build_pdf_fpdf2(interview: Interview, questions: list[InterviewQuestion], f
         pdf.cell(page_w, 6, label, new_x="LMARGIN", new_y="NEXT")
         pdf.ln(1)
 
+    def _boxed_text(w: float, text: str, size: float, bg_color: tuple):
+        """绘制带背景色的文本框"""
+        if not text:
+            return
+        pdf.set_font('cjk', '', size)
+        pdf.set_text_color(*DARK)
+        pdf.set_fill_color(*bg_color)
+        pdf.multi_cell(w, 5.5, text, align='L', fill=True)
+        pdf.ln(1.5)
+
     def divider():
         pdf.ln(2)
         pdf.set_draw_color(*BORDER)
@@ -287,36 +297,21 @@ def _build_pdf_fpdf2(interview: Interview, questions: list[InterviewQuestion], f
 
         # Answer
         label_text('▎你的回答', 9)
-        body_text(q.user_answer_transcript or '（未作答）', 9)
+        _boxed_text(page_w, q.user_answer_transcript or '（未作答）', 9, LIGHT_BG)
 
         # Evaluation
         if q.ai_evaluation:
             label_text('▎AI 评语', 9)
-            pdf.set_fill_color(*ACCENT_BG)
-            y2 = pdf.get_y()
-            pdf.set_font('cjk', '', 9)
-            pdf.set_text_color(*DARK)
-            pdf.multi_cell(page_w, 5.5, q.ai_evaluation)
-            pdf.set_y(pdf.get_y() + 1)
+            _boxed_text(page_w, q.ai_evaluation, 9, ACCENT_BG)
 
         # Reference answer
         label_text('▎参考答案', 9)
-        pdf.set_fill_color(*GREEN_BG)
-        y3 = pdf.get_y()
-        pdf.set_font('cjk', '', 9)
-        pdf.set_text_color(*DARK)
-        pdf.multi_cell(page_w, 5.5, q.reference_answer or '暂无')
-        pdf.set_y(pdf.get_y() + 1)
+        _boxed_text(page_w, q.reference_answer or '暂无', 9, GREEN_BG)
 
         # Improvement
         if q.improvement_suggestion:
             label_text('▎改进建议', 9)
-            pdf.set_fill_color(*ORANGE_BG)
-            y4 = pdf.get_y()
-            pdf.set_font('cjk', '', 9)
-            pdf.set_text_color(*DARK)
-            pdf.multi_cell(page_w, 5.5, q.improvement_suggestion)
-            pdf.set_y(pdf.get_y() + 1)
+            _boxed_text(page_w, q.improvement_suggestion, 9, ORANGE_BG)
 
         if idx < len(sorted_qs) - 1:
             divider()
