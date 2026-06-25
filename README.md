@@ -20,7 +20,7 @@
 
 - **智能出题** — 私企（简历+JD）/ 公务员/事业单位（省份省情 + 时政热点搜索），AI 自动生成个性化面试题
 - **时政搜索** — 公务员/事业单位面试自动搜索近期热点，Serper → Tavily → 内置 Bing 三重兜底
-- **语音交互** — 语音录制 + 实时转写（FunASR），AI 面试官语音播报（Edge TTS）
+- **语音交互** — 桌面/手机统一流式转写（硅基流动在线 ASR + VAD 分段），AI 面试官语音播报（Edge TTS）
 - **多维度评分** — 按类别差异化评分维度，百分制 + 逐题打分
 - **面试报告** — PDF / Markdown / HTML 三种格式，含雷达图、逐题评分、参考答案、简历优化建议
 - **邮箱验证** — 注册邮箱验证 + 忘记密码重置，HTML 邮件模板
@@ -37,11 +37,11 @@
 | 数据库 | PostgreSQL 15 |
 | 缓存 | Redis 7 |
 | AI | DeepSeek API（出题 + 评分） |
-| 语音识别 | FunASR SenseVoiceSmall 本地模型（免费） |
+| 语音识别 | 硅基流动在线 ASR（FunAudioLLM/SenseVoiceSmall） / 本地 FunASR（开发可选） |
 | 语音合成 | 微软 Edge TTS（免费） |
 | 搜索 | Serper / Tavily / 内置 Bing 爬虫（免费，多源兜底） |
 | 邮件 | QQ 邮箱 SMTP（验证码发送） |
-| 部署 | Docker Compose + BuildKit 缓存 + nginx 反向代理 |
+| 部署 | Docker Compose + BuildKit 缓存 + nginx 反向代理 + Let's Encrypt |
 
 ## 🚀 快速开始
 
@@ -78,8 +78,13 @@ docker compose up -d postgres redis
 
 # 2. 后端
 cd backend
-pip install -r requirements.txt
+pip install -r requirements.txt           # 生产依赖（在线 ASR）
+# 如需本地 FunASR 模型: pip install -r requirements-local.txt
 bash ../run_backend.sh    # → http://localhost:8010
+
+# ASR 后端选择: 管理后台「系统配置」→ 语音转文字
+#   siliconflow = 在线 API（推荐，无需本地模型）
+#   local       = 本地 FunASR（需安装 requirements-local.txt + 挂载模型）
 
 # 3. 前端
 cd frontend
@@ -94,7 +99,7 @@ simulatedInterview/
 ├── docker-compose.yml              # Docker 编排（含资源限制、健康检查）
 ├── .env.example                    # 环境变量模板
 ├── backend/                        # FastAPI 后端
-│   ├── Dockerfile                  # PyTorch CPU + 多 worker
+│   ├── Dockerfile                  # 生产轻量镜像（不含 torch/funasr）
 │   ├── app/
 │   │   ├── main.py                 # 应用入口（CORS / 速率限制 / 安全头）
 │   │   ├── config.py               # 配置管理（Pydantic Settings）
@@ -116,7 +121,7 @@ simulatedInterview/
 │       ├── lib/api.ts              # API 客户端（相对路径，不暴露后端）
 │       ├── types/                  # TypeScript 类型定义
 │       └── store/                  # Zustand 状态管理
-├── models/                         # FunASR 模型文件（不纳入版本控制）
+├── models/                         # 本地 ASR 模型（可选；在线模式不需要）
 └── data/                           # 运行时数据（不纳入版本控制）
 ```
 
@@ -157,7 +162,7 @@ simulatedInterview/
 | 管理仪表盘 | 系统统计（总用户/今日面试/7日活跃）+ 最近用户/面试 |
 | 用户管理 | 搜索/分页/详情/设为管理员/禁用/恢复/软删除/硬删除 |
 | 面试管理 | 按类别筛选/分页/删除 |
-| 系统配置 | 搜索 Key + 邮箱 SMTP 配置，可视化修改即时生效 |
+| 系统配置 | 搜索 Key + 邮箱 SMTP + ASR（在线/本地切换），可视化修改即时生效 |
 
 **创建管理员**：在 `.env` 中设置 `FIRST_ADMIN_USERNAME` / `FIRST_ADMIN_PASSWORD` / `FIRST_ADMIN_EMAIL`，首次启动自动创建。
 
@@ -173,6 +178,26 @@ simulatedInterview/
 - 所有搜索源免费（Serper 2,500 次 / Tavily 1,000 次/月 / 内置 Bing 无限）
 - 全部故障时自动降级为 LLM 基于训练知识出题
 
+### 🎙 语音实时转写（桌面 + 手机统一）
+
+录音采用 VAD（语音活动检测）+ WebSocket PCM 流式架构，桌面与手机统一行为：
+
+```
+录音 → AudioContext 16kHz PCM → 64ms 分帧 → base64 → WebSocket
+  → 后端 VAD 累积 + 500ms 静音判句尾 → 在线 ASR 转写（~2s）
+  → transcript_segment 回推前端 → 实时显示文字
+  → 停录时 asr_flush 等待最后一段转完 → 进入复核
+```
+
+- 桌面端不再依赖浏览器 SpeechRecognition（兼容性差、手机不支持）
+- ASR 配置在管理后台「系统配置」→「语音转文字」管理（在线/本地切换、API Key）
+
+### 🔒 HTTPS 与域名
+
+- 推荐配置 Let's Encrypt 正式证书（支持 wss:// 实时转写）
+- 域名未备案导致 HTTP 拦截时，可用 DNS-01 方式签发证书（绕过 80 端口）
+- 临时可通过 `https://<IP>` 访问（证书警告不影响功能，wss 正常连接）
+
 ### 生产部署安全清单
 
 - [ ] `JWT_SECRET` 已改为强随机值 (`openssl rand -hex 32`)
@@ -186,11 +211,11 @@ simulatedInterview/
 
 | 规模 | 配置 | 并发 |
 |------|------|------|
-| 入门 | 2 核 4 GB | 2-5 人 |
-| **推荐** | **4 核 8 GB** | **15-25 人** |
-| 进阶 | 8 核 16 GB | 25-50 人 |
+| 入门 | 2 核 2 GB | 2-5 人 |
+| **推荐** | **2 核 4 GB** | **10-20 人** |
+| 进阶 | 4 核 8 GB | 20-50 人 |
 
-> 4 核 8 GB 经生产优化后可稳跑 15-25 并发用户，内存占用约 2.5 GB（含 FunASR 模型）。
+> 2 核 4 GB 生产优化后稳跑 10-20 并发用户，后端内存约 200 MB（在线 ASR 免本地模型）。
 
 ## 📊 数据模型
 
@@ -205,11 +230,13 @@ simulatedInterview/
 
 ## ⚡ 性能优化
 
-- **PyTorch CPU**: 镜像体积从 12 GB → 3.5 GB（-70%）
+- **在线 ASR**: 硅基流动在线模型替代本地 FunASR，服务器内存 1.2 GB → 200 MB，无 OOM 风险
 - **BuildKit 缓存**: pip/apt/npm 跨构建复用，增量构建秒级完成
 - **TTS 并行预生成**: `asyncio.gather` 所有题目同时合成，40s → 8s
 - **TTS 缓存非阻塞**: 缓存未命中返回 202 后台生成，前端轮询不卡 UI
-- **ASR 信号量**: 限制并行转录数，防止 OOM
+- **流式音频转写**: VAD 分段 + WebSocket PCM 流，桌面/手机统一实时显示
+- **ASR 信号量**: 限制并行转录数，保护 API 速率和带宽
+- **后端镜像瘦身**: 移除 torch/funasr 依赖（约 1 GB），镜像从 2.5 GB → 1 GB
 - **前端相对路径**: API 请求走 Next.js Rewrite，后端地址不暴露
 
 ## 📄 许可
