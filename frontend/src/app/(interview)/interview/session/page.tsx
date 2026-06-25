@@ -104,7 +104,8 @@ function SessionContent() {
   const [feedback, setFeedback] = useState<QuestionScore|null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
   const [completing, setCompleting] = useState(false);
-  const [hasSpeechAPI, setHasSpeechAPI] = useState(true);
+  const [finalizing, setFinalizing] = useState(false);  // 停录后等待所有分段转写完成
+  const [hasSpeechAPI, setHasSpeechAPI] = useState(false);  // 统一用流式ASR，不再依赖浏览器SR
   // 流式出题状态: idle=正常 | waiting=等Q1(全屏动画) | streaming=已出Q1剩余生成中 | done=全部完成
   const [streamStatus, setStreamStatus] = useState<'idle'|'waiting'|'streaming'|'done'>('idle');
   const genStatusRef = useRef<'idle'|'waiting'|'streaming'|'done'>('idle'); // SSE 闭包内使用
@@ -119,20 +120,18 @@ function SessionContent() {
   const wsRef = useRef<WebSocket|null>(null);
   const mediaRecorderRef = useRef<MediaRecorder|null>(null);
   const chunksRef = useRef<Blob[]>([]);
-  const speechRef = useRef<any>(null);
   const streamRef = useRef<MediaStream|null>(null);
   const liveTextRef = useRef('');
   const liveTextElRef = useRef<HTMLParagraphElement|null>(null);
   const stoppingManuallyRef = useRef(false);
-  const recordingGenRef = useRef(0); // 录音代际，防止旧 SR 事件污染新会话
   const mountedRef = useRef(true); // 组件生命周期标记，防止卸载后异步回调执行
   const audioCtxRef = useRef<AudioContext|null>(null);  // 手机端 AudioContext
   const scriptNodeRef = useRef<ScriptProcessorNode|null>(null);  // 手机端 PCM 捕获
   const streamingGenRef = useRef(0);  // 流式代际
+  const finalizingTimeoutRef = useRef<NodeJS.Timeout|null>(null);  // 停录后兜底超时
 
   const stopAll = () => {
     stopStreamingASR();
-    if (speechRef.current) { try { speechRef.current.abort(); } catch {} speechRef.current = null; }
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') { try { mediaRecorderRef.current.stop(); } catch {} }
     if (streamRef.current) { streamRef.current.getTracks().forEach(t=>t.stop()); streamRef.current = null; }
   };
@@ -220,6 +219,11 @@ function SessionContent() {
           else if(m.type==='transcript_segment'){
             liveTextRef.current+=m.text||'';
             if(liveTextElRef.current) liveTextElRef.current.textContent=liveTextRef.current;
+            setLiveText(liveTextRef.current); // 让转写容器从 hidden 变为可见
+          }
+          else if(m.type==='asr_all_done'){
+            // 后端确认所有分段转写完成 → 结束整理态,进入复核
+            finishRecording();
           }
         }catch{}
       };
@@ -477,26 +481,47 @@ function SessionContent() {
     return ()=>{if(thinkingRef.current){clearInterval(thinkingRef.current);thinkingRef.current=null;}};
   },[phase,currentIndex,questions,ttsPlaying,audioLoading]);
 
-  /* ---------- Streaming ASR (手机端 — AudioContext PCM) ---------- */
+  /* ---------- Streaming ASR (AudioContext PCM → WS → 后端 VAD+ASR) ---------- */
   const startStreamingASR = useCallback(async (existingStream?: MediaStream) => {
     const stream = existingStream || await navigator.mediaDevices.getUserMedia({ audio: true });
     if (!existingStream) streamRef.current = stream;
     const ctx = new AudioContext({ sampleRate: 16000 });
+    console.log('[ASR] AudioContext actual sampleRate:', ctx.sampleRate);
     audioCtxRef.current = ctx;
     const src = ctx.createMediaStreamSource(stream);
 
-    // ScriptProcessorNode — 兼容所有移动浏览器
     const node = ctx.createScriptProcessor(1024, 1, 1);
     scriptNodeRef.current = node;
 
     const myGen = ++streamingGenRef.current;
-    const ws = wsRef.current;
-    if (ws?.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'audio_stream_start' }));
+
+    // 等待 WS 就绪再发 audio_stream_start（connectWs 有 800ms 延迟）
+    let streamStarted = false;
+    const ensureStreamStart = () => {
+      if (streamStarted) return true;
+      const w = wsRef.current;
+      if (w?.readyState === WebSocket.OPEN) {
+        w.send(JSON.stringify({ type: 'audio_stream_start' }));
+        streamStarted = true;
+        return true;
+      }
+      return false;
+    };
+    // 立即尝试一次
+    if (!ensureStreamStart()) {
+      // 没就绪则轮询等待，最多 5 秒
+      for (let i = 0; i < 25; i++) {
+        await new Promise(r => setTimeout(r, 200));
+        if (streamingGenRef.current !== myGen) return; // 被 stop 了
+        if (ensureStreamStart()) break;
+      }
     }
 
+    let chunkSeq = 0;
     node.onaudioprocess = (e: AudioProcessingEvent) => {
       if (streamingGenRef.current !== myGen) return;
+      const w = wsRef.current;
+      if (w?.readyState !== WebSocket.OPEN) return;
       const input = e.inputBuffer.getChannelData(0);
       // float32 → int16 PCM
       const int16 = new Int16Array(input.length);
@@ -504,22 +529,23 @@ function SessionContent() {
         const s = Math.max(-1, Math.min(1, input[i]));
         int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
       }
-      const w = wsRef.current;
-      if (w?.readyState === WebSocket.OPEN) {
-        const bytes = new Uint8Array(int16.buffer);
-        let binary = '';
-        for (let i = 0; i < bytes.length; i++) {
-          binary += String.fromCharCode(bytes[i]);
-        }
-        w.send(JSON.stringify({
-          type: 'audio_chunk',
-          data: btoa(binary),
-        }));
+      const bytes = new Uint8Array(int16.buffer);
+      let binary = '';
+      for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
       }
+      w.send(JSON.stringify({
+        type: 'audio_chunk',
+        data: btoa(binary),
+      }));
     };
 
     src.connect(node);
-    // 不 connect destination — 避免回声和反馈噪音
+    // 连到 destination（gain=0）确保 onaudioprocess 被浏览器调度
+    const gain = ctx.createGain();
+    gain.gain.value = 0;
+    node.connect(gain);
+    gain.connect(ctx.destination);
   }, []);
 
   const stopStreamingASR = useCallback(() => {
@@ -539,66 +565,25 @@ function SessionContent() {
     // 立即停止 TTS 朗读，防止题目音频被录入麦克风
     stopTts();
     setAudioLoading(false);
-    // 先彻底清理上一次录音的 SR 实例，防止旧事件残留
-    if(speechRef.current){
-      try{speechRef.current.abort();}catch{}
-      speechRef.current=null;
-    }
+    setFinalizing(false);
+    if(finalizingTimeoutRef.current){clearTimeout(finalizingTimeoutRef.current);finalizingTimeoutRef.current=null;}
     if(thinkingRef.current){clearInterval(thinkingRef.current);thinkingRef.current=null;}
     setFinalThinkingTime(thinkingValueRef.current);
     // 重置所有状态&ref（新录音开始，一切从零开始）
     setTranscript('');setLiveText('');liveTextRef.current='';setTimer(0);setRecordedTime(0);timerValueRef.current=0;
     chunksRef.current=[];stoppingManuallyRef.current=false;connectWs();
-    // 递增代际，所有旧 SR 事件将被忽略
-    recordingGenRef.current++;
-    const myGen = recordingGenRef.current;
-    const SR=createSR();if(!SR)setHasSpeechAPI(false);
+    // 流式代际递增，旧 AudioContext 回调将被忽略
+    streamingGenRef.current++;
     try{
       const stream=await navigator.mediaDevices.getUserMedia({audio:true});streamRef.current=stream;
-      // 手机端：SpeechRecognition 不可用 → 启动 AudioContext PCM 流式转写
-      if(!SR){
-        startStreamingASR(stream).catch(()=>{});
-      }
-      if(SR){speechRef.current=SR;
-        SR.onresult=(e:any)=>{
-          // 代际检查：防止旧 SR 事件污染新录音
-          if(recordingGenRef.current !== myGen) return;
-          for(let i=e.resultIndex;i<e.results.length;i++){
-            const r=e.results[i];
-            if(r.isFinal)liveTextRef.current+=r[0].transcript;
-          }
-          let interim='';
-          for(let i=0;i<e.results.length;i++){
-            if(!e.results[i].isFinal)interim+=e.results[i][0].transcript;
-          }
-          // 直接写 DOM 避免高频 setState 触发全组件重渲染
-          const displayText=liveTextRef.current+interim;
-          if(liveTextElRef.current)liveTextElRef.current.textContent=displayText;
-          setLiveText(displayText);
-        };
-        SR.onerror=(e:any)=>{
-          if(recordingGenRef.current !== myGen) return;
-          if(e.error!=='no-speech'&&e.error!=='aborted')console.warn('SR error:',e.error);
-        };
-        SR.onend=()=>{
-          if(recordingGenRef.current !== myGen) return;
-          // 停顿后自动重启识别（continuous=true 在某些浏览器不可靠）
-          if(!stoppingManuallyRef.current && mediaRecorderRef.current?.state==='recording'){
-            try{speechRef.current?.start();}catch{}
-          }
-        };
-        SR.start();}
+      // 统一启动 AudioContext PCM 流式转写（桌面/手机同一套）
+      startStreamingASR(stream).catch(()=>{});
       const mt=MediaRecorder.isTypeSupported('audio/webm;codecs=opus')?'audio/webm;codecs=opus':'audio/webm';
       const rec=new MediaRecorder(stream,{mimeType:mt});
       rec.ondataavailable=(e)=>{if(e.data.size>0)chunksRef.current.push(e.data);};
       rec.onstop=()=>{
-        if(speechRef.current){try{speechRef.current.stop();}catch{}}
         stream.getTracks().forEach(t=>t.stop());
-        // 延迟 processAudio：等待浏览器 SpeechRecognition 的最终 onresult 事件 flush
-        setTimeout(()=>{
-          if(recordingGenRef.current === myGen) processAudio();
-          else processAudio(); // 非活跃代际也处理（兜底），但 processAudio 内部会检查
-        }, 250);
+        processAudio();
       };
       rec.start();mediaRecorderRef.current=rec;
       timerRef.current=setInterval(()=>{const v=timerValueRef.current+1;timerValueRef.current=v;setTimer(v);},1000);
@@ -606,45 +591,52 @@ function SessionContent() {
     }catch{setPhase('recording');timerRef.current=setInterval(()=>{const v=timerValueRef.current+1;timerValueRef.current=v;setTimer(v);},1000);}
   },[connectWs]);
 
+  // 所有分段转写完成(asr_all_done)或兜底超时后调用：停 MediaRecorder→processAudio
+  const finishRecording=useCallback(()=>{
+    if(finalizingTimeoutRef.current){clearTimeout(finalizingTimeoutRef.current);finalizingTimeoutRef.current=null;}
+    setFinalizing(false);
+    if(mediaRecorderRef.current&&mediaRecorderRef.current.state!=='inactive'){
+      try{mediaRecorderRef.current.stop();}catch{}  // 触发 rec.onstop → processAudio
+    }else{
+      processAudio();
+    }
+  },[]);
+
   const processAudio=async()=>{
     if(timerRef.current){clearInterval(timerRef.current);timerRef.current=null;}
     const time=timerValueRef.current;setRecordedTime(time);timerValueRef.current=0;
-    // 在 SR 完全停止后，捕获最终的浏览器转写文本
-    const browserText=liveTextRef.current;
-    setTranscript(browserText);
-    // 同时更新 displayText（liveText 用于 UI 条件渲染）
-    setLiveText(browserText);
-    if(chunksRef.current.length===0){setPhase('review');return;}
-    setAsrLoading(true);
+    // 流式 ASR 累积的文本即最终转写结果
+    const finalText=liveTextRef.current;
+    setTranscript(finalText);
+    setLiveText(finalText);
     setPhase('review');
-    try{
-      const blob=new Blob(chunksRef.current,{type:'audio/webm'});
-      const buf=await blob.arrayBuffer();
-      const r=await api.post<{text:string}>(`/api/interview/${interviewId}/transcribe?order_index=${currentIndex+1}`,buf);
-      const asrText=r?.text||'';
-      if(asrText&&asrText!==browserText&&asrText.length>browserText.length*0.5){
-        setTranscript(asrText);
-      }else if(!browserText&&asrText){
-        setTranscript(asrText);
-      }
-    }catch{}
-    setAsrLoading(false);
+    // 录音文件存盘（回放用，store_only 不转写）
+    if(chunksRef.current.length>0){
+      try{
+        const blob=new Blob(chunksRef.current,{type:'audio/webm'});
+        const buf=await blob.arrayBuffer();
+        await api.post(`/api/interview/${interviewId}/transcribe?order_index=${currentIndex+1}&store_only=true`,buf);
+      }catch{}
+    }
   };
 
   const stopRecording=useCallback(()=>{
     stoppingManuallyRef.current=true;
-    // 1. 停止 AudioContext 流式转写（手机端）
+    // 1. 停止 AudioContext 采集（已采集的 PCM 段仍在服务端转写中）
     stopStreamingASR();
-    // 2. 停止 SpeechRecognition，立即触发 onend 和最终 onresult 事件 flush
-    if(speechRef.current){try{speechRef.current.stop();}catch{}}
-    // 2. 延迟停止 MediaRecorder，确保 SR 最终结果已在 liveTextRef 中
-    setTimeout(()=>{
-      if(mediaRecorderRef.current&&mediaRecorderRef.current.state!=='inactive'){
-        mediaRecorderRef.current.stop(); // 触发 rec.onstop → processAudio
-      }else{
-        processAudio();
-      }
-    }, 200);
+    // 2. 请求后端 flush：所有在途分段转完后回推 asr_all_done → finishRecording
+    const ws=wsRef.current;
+    if(ws?.readyState===WebSocket.OPEN){
+      setFinalizing(true);
+      ws.send(JSON.stringify({type:'asr_flush'}));
+      // 兜底超时：8秒后无论如何强制收尾，防丢消息卡死
+      finalizingTimeoutRef.current=setTimeout(()=>{
+        if(mountedRef.current){finishRecording();}
+      },8000);
+    }else{
+      // WS 未连接：无法等待，直接收尾
+      finishRecording();
+    }
   },[]);
 
   /* ---------- Submit & Scoring ---------- */
@@ -891,9 +883,9 @@ function SessionContent() {
                   </div>
                 )}
                 {!hasSpeechAPI&&(
-                  <div className="flex items-center gap-2 text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 px-4 py-2 rounded-xl border border-amber-100 dark:border-amber-900">
-                    <AlertCircle className="w-3.5 h-3.5" />
-                    浏览器不支持语音识别，录音后将通过AI转写
+                  <div className="flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/30 px-4 py-2 rounded-xl border border-emerald-100 dark:border-emerald-900">
+                    <Mic className="w-3.5 h-3.5" />
+                    语音实时转写（AI 分段识别）
                   </div>
                 )}
                 {thinkingTime>0&&(
@@ -929,6 +921,29 @@ function SessionContent() {
             {/* ---- recording: mic active ---- */}
             {phase==='recording'&&(
               <div className="flex flex-col items-center gap-6">
+                {/* finalizing: 等待所有分段转写完成 */}
+                {finalizing ? (
+                  <>
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-gray-700 dark:text-gray-300">{formatTime(timer)}</div>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">已停止录音</p>
+                    </div>
+                    <div className="flex flex-col items-center gap-3 py-4">
+                      <Loader2 className="w-10 h-10 animate-spin text-amber-500" />
+                      <p className="text-sm font-medium text-amber-600 dark:text-amber-400">正在整理最后一句...</p>
+                    </div>
+                    {liveText && (
+                      <div className="w-full bg-brand-50/80 dark:bg-brand-950/30 rounded-2xl p-4 border border-brand-100 dark:border-brand-900 max-h-36 overflow-y-auto">
+                        <div className="flex items-center gap-1.5 mb-2">
+                          <Mic className="w-3.5 h-3.5 text-brand-500 dark:text-brand-400" />
+                          <p className="text-xs font-medium text-brand-500 dark:text-brand-400">实时转写</p>
+                        </div>
+                        <p ref={liveTextElRef} className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{liveText}</p>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
                 {/* Timer */}
                 <div className="text-center">
                   <div className="text-5xl sm:text-6xl font-mono font-bold text-gray-800 dark:text-gray-200 tabular-nums tracking-wider">
@@ -952,7 +967,7 @@ function SessionContent() {
                   录音中 · 点击停止
                 </p>
 
-                {/* Live transcription — DOM ref 直接更新避免高频重渲染 */}
+                {/* Live transcription */}
                 <div className={`w-full bg-brand-50/80 dark:bg-brand-950/30 rounded-2xl p-4 border border-brand-100 dark:border-brand-900 max-h-36 overflow-y-auto ${liveText?'':'hidden'}`}>
                   <div className="flex items-center gap-1.5 mb-2">
                     <Mic className="w-3.5 h-3.5 text-brand-500 dark:text-brand-400" />
@@ -973,6 +988,8 @@ function SessionContent() {
                     <XCircle className="w-4 h-4" />
                     跳过
                   </button>
+                )}
+                  </>
                 )}
               </div>
             )}

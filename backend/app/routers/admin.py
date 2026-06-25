@@ -333,6 +333,9 @@ async def admin_update_config(
         "search_providers",
         "smtp_host", "smtp_port", "smtp_user",
         "smtp_password", "smtp_from",
+        # ASR 语音转文字
+        "asr_provider", "asr_siliconflow_api_key",
+        "asr_siliconflow_model", "asr_siliconflow_base_url",
     }
     for key, value in data.items():
         if key not in allowed_keys:
@@ -345,6 +348,12 @@ async def admin_update_config(
             {"k": key, "v": str(value) if value else ""},
         )
     await db.commit()
+    # ASR 配置可能变更 → 失效其内存缓存，使新配置立即生效
+    try:
+        from app.services.asr_service import _invalidate_asr_config_cache
+        _invalidate_asr_config_cache()
+    except Exception:
+        pass
     return {"code": 0, "message": "配置已保存", "data": None}
 
 
@@ -361,3 +370,54 @@ async def admin_test_search(
         "data": {"result": text[:500] if text else "(无结果 — 所有搜索源不可用)"},
         "message": "ok",
     }
+
+
+@router.post("/config/test-asr")
+async def admin_test_asr(
+    current_user: User = Depends(require_admin),
+):
+    """
+    测试 ASR 语音转文字 — 用一段合成 PCM（1 秒短音）验证后端连通。
+    主要验证：后端选择、在线 API Key/网络、或本地模型加载。
+    合成音转写结果可能是空或乱码，重点看是否能正常返回不报错。
+    """
+    import struct
+    import math
+    from app.services.asr_service import transcribe_pcm, _load_asr_config
+
+    cfg = await _load_asr_config()
+    provider = (cfg.get("asr_provider") or "siliconflow").strip().lower()
+
+    # 合成 1 秒 440Hz 正弦波 PCM（16kHz/16bit/mono）作为测试音频
+    sample_rate = 16000
+    duration_s = 1.0
+    freq = 440.0
+    n = int(sample_rate * duration_s)
+    pcm = bytearray()
+    for i in range(n):
+        sample = int(32767 * 0.3 * math.sin(2 * math.pi * freq * i / sample_rate))
+        pcm += struct.pack("<h", sample)
+
+    try:
+        text = await transcribe_pcm(bytes(pcm), "zh")
+        has_key = bool((cfg.get("asr_siliconflow_api_key") or "").strip())
+        return {
+            "code": 0,
+            "data": {
+                "provider": provider,
+                "text": text or "(空 — 合成测试音，转写结果不重要)",
+                "online_key_configured": has_key if provider == "siliconflow" else None,
+                "ok": True,
+            },
+            "message": "ok",
+        }
+    except Exception as e:
+        return {
+            "code": 0,
+            "data": {
+                "provider": provider,
+                "ok": False,
+                "error": str(e),
+            },
+            "message": "ok",
+        }

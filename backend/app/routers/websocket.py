@@ -41,6 +41,8 @@ async def interview_websocket(websocket: WebSocket, interview_id: str):
     vad = None
     vad_state = None
     asr_lock = asyncio.Lock()
+    state = {"pending_segments": 0}  # 已触发ASR但未回推结果的分段数
+    flush_requested = {"pending": False}  # 前端是否已请求 flush
 
     try:
         while True:
@@ -59,6 +61,8 @@ async def interview_websocket(websocket: WebSocket, interview_id: str):
                 from app.services.vad_service import get_vad
                 vad = get_vad()
                 vad_state = vad.reset_state()
+                state["pending_segments"] = 0
+                flush_requested["pending"] = False
 
             elif msg_type == "audio_chunk":
                 if vad is None or vad_state is None:
@@ -79,8 +83,18 @@ async def interview_websocket(websocket: WebSocket, interview_id: str):
                     if len(voice_pcm) < 3200:  # 少于 100ms，忽略
                         continue
                     # 异步处理（不阻塞 WS 消息循环）
+                    state["pending_segments"] += 1
                     asyncio.create_task(_process_voice_segment(
-                        websocket, voice_pcm, asr_lock))
+                        websocket, voice_pcm, asr_lock, state, flush_requested))
+
+            # ── 前端停录：请求 flush（全部段转完时回推 asr_all_done）──
+            elif msg_type == "asr_flush":
+                # 无在途分段 → 立即回推
+                if state["pending_segments"] <= 0:
+                    await websocket.send_json({"type": "asr_all_done"})
+                else:
+                    # 有在途分段：标记请求，由 _process_voice_segment 最后一段完成时回推
+                    flush_requested["pending"] = True
 
             elif msg_type == "tts_request":
                 text = data.get("text", "")
@@ -128,31 +142,48 @@ async def interview_websocket(websocket: WebSocket, interview_id: str):
 
 
 async def _process_voice_segment(
-    websocket: WebSocket, voice_pcm: bytes, asr_lock: asyncio.Lock
+    websocket: WebSocket, voice_pcm: bytes, asr_lock: asyncio.Lock,
+    state: dict, flush_requested: dict,
 ):
-    """后台任务：处理 VAD 检测到的语音段 → ASR 转写 → 推回前端"""
-    async with asr_lock:
-        try:
-            from app.services.asr_service import transcribe_pcm, _get_asr_semaphore
+    """后台任务：处理 VAD 检测到的语音段 → ASR 转写 → 推回前端
 
-            sem = _get_asr_semaphore()
+    转写完成（含异常/超时）后归零分段计数；若前端已请求 flush 且这是最后一段，
+    回推 asr_all_done，让前端停止等待、进入复核页。
+    """
+    try:
+        from app.services.asr_service import transcribe_pcm, _get_asr_semaphore
+
+        sem = _get_asr_semaphore()
+        # 单段 ASR 超时保护（15s），防计数永不归零
+        async def _do():
             if sem:
                 async with sem:
-                    text = await transcribe_pcm(voice_pcm, "zh")
-            else:
-                text = await transcribe_pcm(voice_pcm, "zh")
+                    return await transcribe_pcm(voice_pcm, "zh")
+            return await transcribe_pcm(voice_pcm, "zh")
+        text = await asyncio.wait_for(_do(), timeout=25.0)
 
-            text = (text or "").strip()
-            if text:
-                await websocket.send_json({
-                    "type": "transcript_segment",
-                    "text": text,
-                    "is_final": True,
-                })
-        except Exception as e:
-            import traceback
-            print(f"[ASR stream] Error: {e}")
-            traceback.print_exc()
+        text = (text or "").strip()
+        if text:
+            await websocket.send_json({
+                "type": "transcript_segment",
+                "text": text,
+                "is_final": True,
+            })
+    except asyncio.TimeoutError:
+        print("[ASR stream] segment timeout (15s), skipping")
+    except Exception as e:
+        import traceback
+        print(f"[ASR stream] Error: {e}")
+        traceback.print_exc()
+    finally:
+        # 无论成功/失败/超时，计数归零；若在 flush 等待中且这是最后一段 → 回推
+        state["pending_segments"] = max(0, state["pending_segments"] - 1)
+        if flush_requested["pending"] and state["pending_segments"] <= 0:
+            flush_requested["pending"] = False
+            try:
+                await websocket.send_json({"type": "asr_all_done"})
+            except Exception:
+                pass
 
 
 async def _score_single_question(db, interview_id: uuid.UUID, order_index: int) -> dict:

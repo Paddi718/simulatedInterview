@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { ToastProvider, useToast } from '@/components/ui/Toast';
-import { Search, Key, Mail, CheckCircle2, XCircle, Loader2, FlaskConical } from 'lucide-react';
+import { Search, Key, Mail, Mic, CheckCircle2, XCircle, Loader2, FlaskConical } from 'lucide-react';
 
 const PROVIDER_INFO: Record<string, { name: string; desc: string; url: string }> = {
   serper: { name: 'Serper', desc: 'Google 搜索结果，中文最优', url: 'https://serper.dev' },
@@ -32,6 +32,13 @@ function AdminSettingsContent() {
   const [smtpUser, setSmtpUser] = useState('');
   const [smtpPassword, setSmtpPassword] = useState('');
   const [smtpFrom, setSmtpFrom] = useState('');
+  // ASR 语音转文字
+  const [asrProvider, setAsrProvider] = useState('siliconflow');
+  const [asrKey, setAsrKey] = useState('');
+  const [asrModel, setAsrModel] = useState('FunAudioLLM/SenseVoiceSmall');
+  const [asrBaseUrl, setAsrBaseUrl] = useState('https://api.siliconflow.cn/v1');
+  const [asrTesting, setAsrTesting] = useState(false);
+  const [asrTestResult, setAsrTestResult] = useState<string | null>(null);
 
   const loadConfig = useCallback(async () => {
     try {
@@ -46,6 +53,10 @@ function AdminSettingsContent() {
       setSmtpUser(data.smtp_user || '');
       setSmtpPassword(data.smtp_password || '');
       setSmtpFrom(data.smtp_from || '');
+      setAsrProvider(data.asr_provider || 'siliconflow');
+      setAsrKey(data.asr_siliconflow_api_key || '');
+      setAsrModel(data.asr_siliconflow_model || 'FunAudioLLM/SenseVoiceSmall');
+      setAsrBaseUrl(data.asr_siliconflow_base_url || 'https://api.siliconflow.cn/v1');
     } catch {
       // ignore
     } finally {
@@ -67,6 +78,10 @@ function AdminSettingsContent() {
         smtp_user: smtpUser,
         smtp_password: smtpPassword,
         smtp_from: smtpFrom,
+        asr_provider: asrProvider,
+        asr_siliconflow_api_key: asrKey.includes('***') ? undefined : asrKey,
+        asr_siliconflow_model: asrModel,
+        asr_siliconflow_base_url: asrBaseUrl,
       });
       toast({ title: '配置已保存', variant: 'success' });
       loadConfig();
@@ -87,6 +102,29 @@ function AdminSettingsContent() {
       setTestResult('测试失败: ' + (err.message || '未知错误'));
     } finally {
       setTesting(false);
+    }
+  };
+
+  const handleAsrTest = async () => {
+    setAsrTesting(true);
+    setAsrTestResult(null);
+    try {
+      const data = await api.post<{
+        provider: string; text?: string; ok: boolean;
+        online_key_configured?: boolean | null; error?: string;
+      }>('/api/admin/config/test-asr');
+      if (data.ok) {
+        const keyNote = data.provider === 'siliconflow'
+          ? (data.online_key_configured ? '在线 Key 已配置、连通正常。' : '⚠️ 在线 Key 未配置。')
+          : '本地后端。';
+        setAsrTestResult(`[${data.provider}] ${keyNote}\n转写结果: ${data.text || '(空)'}`);
+      } else {
+        setAsrTestResult(`[${data.provider}] 测试失败: ${data.error || '未知错误'}`);
+      }
+    } catch (err: any) {
+      setAsrTestResult('测试失败: ' + (err.message || '未知错误'));
+    } finally {
+      setAsrTesting(false);
     }
   };
 
@@ -182,6 +220,21 @@ function AdminSettingsContent() {
             <span className="text-gray-600 dark:text-gray-400">内置 Bing 搜索：</span>
             <span className="font-medium text-green-600 dark:text-green-400">始终可用（最终兜底）</span>
           </div>
+
+          <hr className="border-gray-100 dark:border-gray-800" />
+
+          {/* Search test */}
+          <div className="flex items-center gap-3 pt-1">
+            <Button variant="secondary" onClick={handleTest} disabled={testing}>
+              {testing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FlaskConical className="h-4 w-4 mr-2" />}
+              测试搜索
+            </Button>
+          </div>
+          {testResult && (
+            <pre className="text-xs text-gray-600 dark:text-gray-400 whitespace-pre-wrap font-mono leading-relaxed bg-gray-50 dark:bg-gray-900 rounded-lg p-3">
+              {testResult}
+            </pre>
+          )}
         </CardContent>
       </Card>
 
@@ -237,30 +290,114 @@ function AdminSettingsContent() {
         </CardContent>
       </Card>
 
-      {/* Test & Save */}
+      {/* ASR Config */}
+      <Card className="mb-6">
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Mic className="h-5 w-5 text-gray-400" />
+            <CardTitle className="text-base">语音转文字 (ASR)</CardTitle>
+            <span className={`ml-auto inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium ${
+              asrProvider === 'siliconflow'
+                ? (asrKey && asrKey !== '***' ? 'bg-green-50 text-green-600 dark:bg-green-950/30 dark:text-green-400' : 'bg-amber-50 text-amber-600 dark:bg-amber-950/30 dark:text-amber-400')
+                : 'bg-blue-50 text-blue-600 dark:bg-blue-950/30 dark:text-blue-400'
+            }`}>
+              {asrProvider === 'siliconflow'
+                ? (asrKey && asrKey !== '***' ? '在线 · 已配置Key' : '在线 · 未配置Key')
+                : '本地 FunASR'}
+            </span>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-xs text-gray-400">
+            手机端实时语音转文字依赖此处配置。推荐"在线"（硅基流动，免费额度、免本地模型、防 OOM）；
+            "本地"需服务器装 funasr/torch 并挂载模型（4GB 服务器易 OOM）。
+          </p>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">后端</label>
+            <div className="flex gap-2">
+              {([
+                { v: 'siliconflow', label: '在线 · 硅基流动' },
+                { v: 'local', label: '本地 · FunASR' },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.v}
+                  type="button"
+                  onClick={() => setAsrProvider(opt.v)}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
+                    asrProvider === opt.v
+                      ? 'bg-brand-500 text-white'
+                      : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {asrProvider === 'siliconflow' && (
+            <>
+              <div>
+                <label className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                  <Key className="h-4 w-4" />
+                  硅基流动 API Key
+                  {asrKey && asrKey !== '***' ? <CheckCircle2 className="h-4 w-4 text-green-500" /> : null}
+                  {asrKey === '***' && <span className="text-[11px] text-gray-400">已保存（不回显）</span>}
+                </label>
+                <Input
+                  value={asrKey === '***' ? '' : asrKey}
+                  onChange={(e) => setAsrKey(e.target.value)}
+                  type="password"
+                  placeholder={asrKey === '***' ? '已保存，留空则不修改' : 'sk-xxx'}
+                  className="font-mono text-sm"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  免费注册 <a href="https://cloud.siliconflow.cn" target="_blank" className="text-brand-500 hover:underline">cloud.siliconflow.cn</a>，控制台创建 API 密钥。
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">模型</label>
+                  <Input value={asrModel} onChange={(e) => setAsrModel(e.target.value)} className="font-mono text-sm" placeholder="FunAudioLLM/SenseVoiceSmall" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Base URL</label>
+                  <Input value={asrBaseUrl} onChange={(e) => setAsrBaseUrl(e.target.value)} className="font-mono text-sm" placeholder="https://api.siliconflow.cn/v1" />
+                </div>
+              </div>
+            </>
+          )}
+
+          {asrProvider === 'local' && (
+            <div className="rounded-lg bg-amber-50 dark:bg-amber-950/20 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+              本地后端需在服务器安装 funasr/torch（<code>requirements-local.txt</code>）并挂载 SenseVoiceSmall 模型。4GB 服务器加载约 1GB 内存，有 OOM 风险。
+            </div>
+          )}
+
+          <div className="flex items-center gap-3 pt-1">
+            <Button variant="secondary" onClick={handleAsrTest} disabled={asrTesting}>
+              {asrTesting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FlaskConical className="h-4 w-4 mr-2" />}
+              测试转写
+            </Button>
+            <span className="text-xs text-gray-400">用 1 秒合成音验证连通，转写结果不重要</span>
+          </div>
+
+          {asrTestResult && (
+            <pre className="text-xs text-gray-600 dark:text-gray-400 whitespace-pre-wrap font-mono leading-relaxed bg-gray-50 dark:bg-gray-900 rounded-lg p-3">
+              {asrTestResult}
+            </pre>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Save */}
       <div className="flex items-center gap-3 mb-6">
-        <Button variant="secondary" onClick={handleTest} disabled={testing}>
-          {testing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FlaskConical className="h-4 w-4 mr-2" />}
-          测试搜索
-        </Button>
         <Button onClick={handleSave} disabled={saving}>
           {saving ? '保存中...' : '保存配置'}
         </Button>
       </div>
-
-      {/* Test Result */}
-      {testResult && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">搜索结果（测试省份: 广东省）</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <pre className="text-xs text-gray-600 dark:text-gray-400 whitespace-pre-wrap font-mono leading-relaxed">
-              {testResult}
-            </pre>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 }

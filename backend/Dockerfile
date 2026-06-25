@@ -25,13 +25,9 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     && rm -rf /var/lib/apt/lists/*
 
 # ---------- Python 依赖 ----------
-# PyTorch CPU 版（体积减半，生产无 GPU）
+# 生产不装 funasr/torch — 走硅基流动在线 ASR，节省约 1GB 内存
 ARG PIP_MIRROR=
 COPY requirements.txt .
-
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir --retries 5 --timeout 60 \
-        torch torchaudio --index-url https://download.pytorch.org/whl/cpu
 
 RUN --mount=type=cache,target=/root/.cache/pip \
     if [ -n "$PIP_MIRROR" ]; then \

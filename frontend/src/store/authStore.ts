@@ -7,6 +7,18 @@ interface User {
   email?: string;
   is_admin?: boolean;
   created_at: string;
+  tts_preference?: { voice?: string; speed?: number; auto_read?: boolean } | null;
+}
+
+// 后端 tts_preference 是跨设备同步的权威源。
+// 同步进 localStorage，让面试页（只读 localStorage）拿到正确值——
+// 否则登录后直接进面试页会用旧的 localStorage 值，必须进设置点保存才生效。
+function syncTtsToStorage(user: User | undefined | null) {
+  if (!user?.tts_preference) return;
+  const p = user.tts_preference;
+  if (p.voice !== undefined && p.voice) localStorage.setItem('tts_voice', p.voice);
+  if (p.speed !== undefined && p.speed) localStorage.setItem('tts_speed', String(p.speed));
+  if (p.auto_read !== undefined) localStorage.setItem('tts_auto_read', String(p.auto_read));
 }
 
 interface AuthState {
@@ -32,6 +44,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       { username, password }
     );
     localStorage.setItem('access_token', data.access_token);
+    syncTtsToStorage(data.user);
     set({ user: data.user, isAuthenticated: true });
   },
 
@@ -50,6 +63,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
     // 无邮箱直接登录
     localStorage.setItem('access_token', data.data.access_token);
+    syncTtsToStorage(data.data.user);
     set({ user: data.data.user, isAuthenticated: true });
     return false;
   },
@@ -64,6 +78,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     if (!res.ok) throw new Error(data.detail || '验证失败');
 
     localStorage.setItem('access_token', data.data.access_token);
+    syncTtsToStorage(data.data.user);
     set({ user: data.data.user, isAuthenticated: true });
   },
 
@@ -92,6 +107,7 @@ export const useAuthStore = create<AuthState>((set) => ({
         return;
       }
       const user = await api.get<User>('/api/auth/me');
+      syncTtsToStorage(user);
       set({ user, isAuthenticated: true, isLoading: false });
     } catch {
       localStorage.removeItem('access_token');

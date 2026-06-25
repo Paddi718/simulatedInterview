@@ -94,12 +94,17 @@ export default function SettingsPage() {
       setUser(u);
       setUsername(u.username);
       setEmail(u.email || '');
-      // 服务端存储的 TTS 偏好优先（跨设备同步）
+      // 服务端 tts_preference 为权威源（跨设备同步）：
+      // 有值就覆盖本地 state 与 localStorage，避免 localStorage 残留旧值
+      // 导致"必须点保存才生效"。
       if (u.tts_preference) {
-        if (u.tts_preference.voice && !storedVoice) setVoice(u.tts_preference.voice);
-        if (u.tts_preference.speed && !storedSpeed) setSpeed(u.tts_preference.speed);
-        if (u.tts_preference.auto_read !== undefined && !storedAuto)
-          setAutoRead(u.tts_preference.auto_read);
+        const p = u.tts_preference;
+        if (p.voice) { setVoice(p.voice); localStorage.setItem('tts_voice', p.voice); }
+        if (p.speed) { setSpeed(p.speed); localStorage.setItem('tts_speed', String(p.speed)); }
+        if (p.auto_read !== undefined) {
+          setAutoRead(p.auto_read);
+          localStorage.setItem('tts_auto_read', String(p.auto_read));
+        }
       }
       if (u.llm_config) {
         const key = u.llm_config.api_key || '';

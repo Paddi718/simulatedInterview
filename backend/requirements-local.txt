@@ -1,0 +1,15 @@
+# 本地开发依赖 — 在 requirements.txt 基础上增加本地 ASR 所需的 funasr/torch。
+# 用法: pip install -r requirements-local.txt
+#
+# 生产/服务器不要用这个文件: 走硅基流动在线 ASR（asr_provider=siliconflow），
+# 不装 funasr/torch，节省约 1GB 内存避免 OOM。
+-r requirements.txt
+
+# 本地 FunASR(SenseVoiceSmall) — 仅 asr_provider=local 时需要
+funasr>=1.0.0
+
+# torch / torchaudio — funasr 依赖。本地装 GPU 版（默认源即可）：
+#   pip install torch torchaudio
+# 若需 CPU 版: pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+torch
+torchaudio

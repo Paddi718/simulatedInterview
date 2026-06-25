@@ -892,19 +892,21 @@ async def transcribe_audio(
     request: Request,
     current_user: User = Depends(get_current_user),
 ):
-    """接收上传的音频文件(webm/opus)，返回 FunASR 转写文本。同时保存录音用于回放。"""
+    """接收上传的音频文件(webm/opus)，返回转写文本。同时保存录音用于回放。
+
+    store_only=true：仅存盘回放，不转写（流式ASR已在前端完成转写，此处只保留录音文件）。
+    """
     from app.services.asr_service import transcribe_pcm
     from app.services.audio_cache import save_recording_sync
 
     # 获取题目序号（用于回放）
     order_index = int(request.query_params.get("order_index", 0))
+    store_only = request.query_params.get("store_only", "").lower() in ("1", "true", "yes")
 
     body = await request.body()
     if not body or len(body) < 100:
         return {"code": 0, "data": {"text": ""}, "message": "ok"}
 
-    tmp_path = None
-    wav_path = None
     webm_bytes = body
 
     # 立即保存原始录音（在转写之前），确保回放可用
@@ -912,6 +914,13 @@ async def transcribe_audio(
         await asyncio.to_thread(save_recording_sync, str(interview_id), order_index, webm_bytes)
     except Exception:
         pass  # 录音保存失败不影响转写
+
+    # 仅存盘模式：跳过转写（流式ASR已转写，前端忽略返回text）
+    if store_only:
+        return {"code": 0, "data": {"text": ""}, "message": "ok"}
+
+    tmp_path = None
+    wav_path = None
 
     try:
         with tempfile.NamedTemporaryFile(suffix='.webm', delete=False) as f:
