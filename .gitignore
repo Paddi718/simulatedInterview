@@ -70,3 +70,4 @@ docker-compose.override.yml
 *.tar.gz
 *.tar
 *.zip
+frontend/tsconfig.tsbuildinfo
