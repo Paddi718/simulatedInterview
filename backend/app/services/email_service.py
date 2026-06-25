@@ -219,19 +219,28 @@ async def send_report_email(to_email: str, pdf_path: str, interview) -> bool:
     if not cfg["user"] or not cfg["password"]:
         return False
 
-    msg = MIMEMultipart()
-    msg["From"] = cfg["from"] or cfg["user"]
-    msg["To"] = to_email
-    msg["Subject"] = "AI 模拟面试 - 面试报告"
-
-    # 正文
     cat = getattr(interview, 'interview_category', 'private_enterprise') or 'private_enterprise'
     cat_labels = {"private_enterprise": "私企面试", "civil_service": "公务员面试", "institution": "事业单位面试"}
     cat_label = cat_labels.get(cat, "面试")
+    cfg_data = getattr(interview, 'category_config', None) or {}
+
+    # 构建清晰的邮件标题
+    if cat == "civil_service":
+        subject_label = cfg_data.get("province", "公务员") + cfg_data.get("position_category", "公务员")
+    elif cat == "institution":
+        subject_label = cfg_data.get("province", "事业单位") + cfg_data.get("position_name", "事业单位")
+    else:
+        subject_label = cat_label
+
+    msg = MIMEMultipart()
+    msg["From"] = cfg["from"] or cfg["user"]
+    msg["To"] = to_email
+    msg["Subject"] = f"面试报告 - {subject_label}"
+
     score = getattr(interview, 'total_score', None)
     score_text = f"{score} 分" if score is not None else "未评分"
     html_body = f"""<html><body style="font-family:system-ui,sans-serif;padding:20px;color:#333">
-    <h2 style="color:#6366f1">AI 模拟面试报告</h2>
+    <h2 style="color:#6366f1">面试报告</h2>
     <p>您好，</p>
     <p>您的<b>{cat_label}</b>面试报告已生成，详见附件 PDF。</p>
     <p>总分：<b style="color:#6366f1;font-size:20px">{score_text}</b></p>

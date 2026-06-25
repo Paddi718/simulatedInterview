@@ -493,19 +493,34 @@ async def generate_document(
     except Exception:
         pass
 
-    # Build professional filename: 模拟面试_姓名_岗位_日期.ext
+    # Build clear filename: 模拟面试-姓名/省份-岗位-日期.ext
     import re
     date_str = datetime.now().strftime("%Y%m%d")
-    name_part = (candidate_name or "候选人").strip()
-    position_part = (job_position or "面试岗位").strip()
-    # 清洗：去路径特殊字符、UUID 前缀、多余空格
+    cat = (interview.interview_category or "private_enterprise")
+    cfg = interview.category_config or {}
+
+    # 人名 / 省份
+    if cat == "civil_service":
+        name_part = (cfg.get("province", "") or "公务员").strip()
+    elif cat == "institution":
+        name_part = (cfg.get("province", "") or "事业单位").strip()
+    else:
+        name_part = (candidate_name or "候选人").strip()
     name_part = re.sub(r'[\\/:*?"<>|]', '', name_part)
-    name_part = re.sub(r'[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}[_-]*', '', name_part, flags=re.I)
-    name_part = re.sub(r'\s+', '', name_part).strip('_') or "候选人"
+    name_part = re.sub(r'\s+', '', name_part).strip() or "候选人"
+
+    # 岗位
+    if cat == "civil_service":
+        position_part = cfg.get("position_category", "") or cfg.get("position_name", "") or "公务员"
+    elif cat == "institution":
+        position_part = cfg.get("position_name", "") or cfg.get("position_category", "") or "事业单位"
+    else:
+        position_part = (job_position or "面试岗位").strip()
     position_part = re.sub(r'[\\/:*?"<>|,]', '', position_part)
-    position_part = re.sub(r'\s+', '', position_part).strip()[:20] or "面试"
+    position_part = re.sub(r'\s+', '', position_part).strip()[:25] or "面试"
+
     ext = doc_format
-    filename = f"模拟面试_{name_part}_{position_part}_{date_str}.{ext}"
+    filename = f"模拟面试-{name_part}-{position_part}-{date_str}.{ext}"
 
     if doc_format == "md":
         content = _build_markdown(interview, questions)
