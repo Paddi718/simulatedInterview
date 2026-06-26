@@ -115,6 +115,23 @@ function SessionContent() {
     const t = setInterval(() => setWaitSeconds(s => s + 1), 1000);
     return () => clearInterval(t);
   }, [streamStatus]);
+  // 轮询：等待状态下每3秒查后端，题到了就加载
+  useEffect(() => {
+    if (streamStatus !== 'waiting' || !interviewId) return;
+    const interval = setInterval(async () => {
+      try {
+        const d = await api.get<{questions:Question[];status:string}>(`/api/interview/${interviewId}`);
+        const qs = (d.questions || []).filter((q:any) => q.question_text && q.question_text !== '...');
+        if (qs.length > 0 && mountedRef.current) {
+          setQuestions(qs);
+          setGenTotal(qs.length); setGenCount(qs.length);
+          genStatusRef.current = 'done'; setStreamStatus('done');
+          setPhase('question'); clearInterval(interval);
+        }
+      } catch {}
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [streamStatus, interviewId]);
   const [genTotal, setGenTotal] = useState(0);
   const [genCount, setGenCount] = useState(0);
 
@@ -294,12 +311,12 @@ function SessionContent() {
       const firstUnanswered = qs.findIndex(q => !q.user_answer_transcript);
       if(firstUnanswered>=0)setCurrentIndex(firstUnanswered);
 
-      // 流式生成中 → 连接 SSE 逐题接收
+      // 流式生成中 → 轮询 REST（SSE 对 qwen 推理模型不友好，轮询最稳）
       if(d.status==='generating'){
         genStatusRef.current='waiting';setStreamStatus('waiting');
         setPhase('generating');
         setGenTotal(0); setGenCount(qs.length);
-        connectQuestionSSE();
+        connectQuestionSSE(); // SSE 仍然连着做加速通道
       } else {
         genStatusRef.current='done';setStreamStatus('done');
       }
