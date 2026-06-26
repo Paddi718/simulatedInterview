@@ -318,9 +318,25 @@ function SessionContent() {
       const reader=res.body.getReader();
       const decoder=new TextDecoder();
       let buf='';
+      let gotQuestion = false;
+      // 30 秒无题自动降级 REST 拉取
+      const fallbackTimer = setTimeout(async () => {
+        if(gotQuestion || !mountedRef.current) return;
+        try{ reader.cancel(); }catch{}
+        try{
+          const d=await api.get<{questions:Question[];status:string}>(`/api/interview/${interviewId}`);
+          const qs=(d.questions||[]).filter((q:any)=>q.question_text && q.question_text !== '...');
+          if(qs.length>0 && mountedRef.current){
+            setQuestions(qs);
+            setGenTotal(qs.length);
+            genStatusRef.current='done';setStreamStatus('done');
+            setPhase(qs.length>0?'question':'generating');
+          }
+        }catch{}
+      }, 30000);
       while(true){
         const{done,value}=await reader.read();
-        if(done||!mountedRef.current) break;
+        if(done||!mountedRef.current) { clearTimeout(fallbackTimer); break; }
         buf+=decoder.decode(value,{stream:true});
         const lines=buf.split('\n');
         buf=lines.pop()||'';
@@ -329,6 +345,7 @@ function SessionContent() {
             try{
               const data=JSON.parse(line.slice(6));
               if(data.type==='question'){
+                if(!gotQuestion){ gotQuestion=true; clearTimeout(fallbackTimer); }
                 setQuestions(prev=>{
                   const exists=prev.find(q=>q.order_index===data.index);
                   if(exists) return prev;
@@ -364,6 +381,7 @@ function SessionContent() {
                   setStreamStatus('streaming');
                 }
               }else if(data.type==='done'){
+                if(!gotQuestion){ gotQuestion=true; clearTimeout(fallbackTimer); }
                 genStatusRef.current='done';
                 setStreamStatus('done');
               }
@@ -744,12 +762,14 @@ function SessionContent() {
           <p className="text-sm text-gray-400 dark:text-gray-500 leading-relaxed">
             AI 正在分析你的简历和岗位要求，生成个性化面试题
           </p>
-          <p className="text-xs text-gray-400 mt-4">
-            已等待 <span className="font-medium text-gray-600 dark:text-gray-300">{waitSeconds} 秒</span>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-4">
+            已等待 <span className="font-semibold text-gray-700 dark:text-gray-200">{waitSeconds} 秒</span>
+            <span className="mx-1">·</span>
+            预计 20-60 秒
           </p>
-          {waitSeconds > 60 && (
+          {waitSeconds > 90 && (
             <p className="text-xs text-amber-500 mt-2">
-              比预期慢，请耐心等待或刷新后重试
+              比预期慢，可返回面试列表重新进入查看
             </p>
           )}
         </div>
