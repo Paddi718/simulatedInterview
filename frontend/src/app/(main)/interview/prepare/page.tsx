@@ -442,7 +442,7 @@ export default function PreparePage() {
           {resumes.map(r => (
             <div
               key={r.id}
-              onClick={() => setSelectedResume(r.id)}
+              onClick={() => setSelectedResume(selectedResume === r.id ? '' : r.id)}
               className={`rounded-2xl border p-4 cursor-pointer transition-all duration-200 ${
                 selectedResume === r.id
                   ? 'border-brand-500 bg-brand-50/60 dark:bg-brand-950/30 dark:border-brand-500 shadow-sm shadow-brand-100 dark:shadow-brand-900/20'
@@ -537,7 +537,7 @@ export default function PreparePage() {
           {jds.map(j => (
             <div
               key={j.id}
-              onClick={() => { setSelectedJd(j.id); setJdText(''); }}
+              onClick={() => { setSelectedJd(selectedJd === j.id ? '' : j.id); setJdText(''); }}
               className={`group rounded-2xl border p-4 cursor-pointer transition-all duration-200 ${
                 selectedJd === j.id
                   ? 'border-brand-500 bg-brand-50/60 dark:bg-brand-950/30 dark:border-brand-500 shadow-sm shadow-brand-100 dark:shadow-brand-900/20'
