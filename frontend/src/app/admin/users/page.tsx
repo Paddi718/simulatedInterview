@@ -23,6 +23,14 @@ import {
 
 const PAGE_SIZE = 20;
 
+function formatRelative(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  if (diff < 60000) return '刚刚';
+  if (diff < 3600000) return `${Math.floor(diff / 60000)} 分钟前`;
+  if (diff < 86400000) return `${Math.floor(diff / 3600000)} 小时前`;
+  return `${Math.floor(diff / 86400000)} 天前`;
+}
+
 function AdminUsersContent() {
   const { toast } = useToast();
   const [users, setUsers] = useState<AdminUserItem[]>([]);
@@ -149,6 +157,7 @@ function AdminUsersContent() {
                   <th className="text-left py-3 px-5 font-medium text-gray-500 dark:text-gray-400 text-xs">用户名</th>
                   <th className="text-left py-3 px-5 font-medium text-gray-500 dark:text-gray-400 text-xs">邮箱</th>
                   <th className="text-left py-3 px-5 font-medium text-gray-500 dark:text-gray-400 text-xs">状态</th>
+                  <th className="text-left py-3 px-5 font-medium text-gray-500 dark:text-gray-400 text-xs">在线</th>
                   <th className="text-left py-3 px-5 font-medium text-gray-500 dark:text-gray-400 text-xs">面试数</th>
                   <th className="text-left py-3 px-5 font-medium text-gray-500 dark:text-gray-400 text-xs">注册时间</th>
                   <th className="text-right py-3 px-5 font-medium text-gray-500 dark:text-gray-400 text-xs">操作</th>
@@ -171,6 +180,17 @@ function AdminUsersContent() {
                           : <span className="inline-flex items-center gap-1 rounded-full bg-red-50 dark:bg-red-950/30 px-2 py-0.5 text-[11px] font-medium text-red-600 dark:text-red-400"><UserX className="h-3 w-3" /> 已禁用</span>}
                         {!u.is_verified && <span className="inline-flex items-center rounded-full bg-amber-50 dark:bg-amber-950/30 px-2 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400">未验证</span>}
                       </div>
+                    </td>
+                    <td className="py-3 px-5 text-sm">
+                      {u.last_active_at && (Date.now() - new Date(u.last_active_at).getTime()) < 120000 ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-green-50 dark:bg-green-950/30 px-2 py-0.5 text-[11px] font-medium text-green-600 dark:text-green-400">
+                          <span className="w-1.5 h-1.5 rounded-full bg-green-500" /> 在线
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-400">
+                          {u.last_active_at ? formatRelative(u.last_active_at) : '-'}
+                        </span>
+                      )}
                     </td>
                     <td className="py-3 px-5 text-sm text-gray-500 dark:text-gray-400">{u.interview_count}</td>
                     <td className="py-3 px-5 text-sm text-gray-400 dark:text-gray-500">{formatDate(u.created_at)}</td>

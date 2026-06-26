@@ -81,6 +81,7 @@ async def admin_list_users(
             is_admin=u.is_admin, is_active=u.is_active,
             is_verified=u.is_verified,
             created_at=u.created_at.isoformat(),
+            last_active_at=u.last_active_at.isoformat() if u.last_active_at else None,
             interview_count=intv_cnt,
         ))
 

@@ -13,6 +13,7 @@ export interface AdminUserItem {
   is_active: boolean;
   is_verified: boolean;
   created_at: string;
+  last_active_at: string | null;
   interview_count: number;
 }
 

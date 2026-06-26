@@ -72,4 +72,11 @@ async def _verify_token(token: str, db: AsyncSession) -> User:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="账号已被禁用")
     if user.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="账号已注销")
+
+    # 记录活跃时间（30 秒限流，避免高频轮询写炸 DB）
+    now = __import__('datetime').datetime.now(__import__('datetime').timezone.utc)
+    if user.last_active_at is None or (now - user.last_active_at).total_seconds() > 30:
+        user.last_active_at = now
+        await db.commit()
+
     return user

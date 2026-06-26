@@ -17,6 +17,7 @@ class AdminUserItem(BaseModel):
     is_active: bool = True
     is_verified: bool = False
     created_at: str
+    last_active_at: str | None = None
     interview_count: int = 0
 
 
