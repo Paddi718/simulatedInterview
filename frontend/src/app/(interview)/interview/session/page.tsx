@@ -722,8 +722,17 @@ function SessionContent() {
     );
   }
 
-  // Waiting state — 等 Q1，显示动画
+  // Waiting 计时
+  const [waitSeconds, setWaitSeconds] = useState(0);
+  useEffect(() => {
+    if (streamStatus !== 'waiting') { setWaitSeconds(0); return; }
+    const t = setInterval(() => setWaitSeconds(s => s + 1), 1000);
+    return () => clearInterval(t);
+  }, [streamStatus]);
+
+  // Waiting state — 等 Q1，显示动画+计时
   if(streamStatus === 'waiting' && questions.length === 0) {
+    const progress = Math.min(waitSeconds / 40, 1); // 预计 40 秒
     return (
       <div className="min-h-screen bg-gray-50/50 dark:bg-gray-950 flex items-center justify-center">
         <div className="text-center max-w-sm mx-4">
@@ -735,13 +744,20 @@ function SessionContent() {
           </div>
           <p className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">AI 正在出题</p>
           <p className="text-sm text-gray-400 dark:text-gray-500 leading-relaxed">
-            正在根据你的要求生成个性化面试题目，请稍候...
+            AI 正在分析你的简历和岗位要求，生成个性化面试题
           </p>
-          <div className="mt-6 flex items-center justify-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-brand-400 animate-bounce" style={{animationDelay:'0s'}} />
-            <span className="w-2 h-2 rounded-full bg-brand-400 animate-bounce" style={{animationDelay:'0.15s'}} />
-            <span className="w-2 h-2 rounded-full bg-brand-400 animate-bounce" style={{animationDelay:'0.3s'}} />
+          {/* 进度条 */}
+          <div className="mt-5 w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
+            <div className="h-full bg-brand-500 rounded-full transition-all duration-500" style={{width: `${Math.round(progress * 100)}%`}} />
           </div>
+          <p className="text-xs text-gray-400 mt-2">
+            已等待 <span className="font-medium text-gray-600 dark:text-gray-300">{waitSeconds} 秒</span>，预计需要 20-60 秒
+          </p>
+          {waitSeconds > 60 && (
+            <p className="text-xs text-amber-500 mt-2">
+              比预期慢，请耐心等待或刷新后重试
+            </p>
+          )}
         </div>
       </div>
     );
