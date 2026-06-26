@@ -118,27 +118,27 @@ function SessionContent() {
   }, [streamStatus]);
   // 轮询：等待状态下每3秒查后端，题到了就加载
   useEffect(() => {
-    if (streamStatus !== 'waiting' || !interviewId) return;
+    if (!interviewId) return;
+    if (streamStatus !== 'waiting' && streamStatus !== 'streaming') return;
     const interval = setInterval(async () => {
       try {
         const d = await api.get<{questions:Question[];status:string}>(`/api/interview/${interviewId}`);
         const qs = (d.questions || []).filter((q:any) => q.question_text && q.question_text !== '...');
-        if (qs.length > 0 && mountedRef.current) {
-          setQuestions(qs);
-          setGenCount(qs.length);
-          // 首题到达 → 切换为流式出题模式（可看到剩余题目生成）
-          if (genStatusRef.current === 'waiting') {
-            genStatusRef.current = 'streaming';
-            setStreamStatus('streaming');
-            setPhase('question');
-          }
-          // 全部完成 → 停止轮询
-          if (d.status !== 'generating' || qs.length >= 10) {
-            genStatusRef.current = 'done';
-            setStreamStatus('done');
-            setGenTotal(qs.length);
-            clearInterval(interval);
-          }
+        if (qs.length === 0 || !mountedRef.current) return;
+        setQuestions(qs);
+        setGenCount(qs.length);
+        setGenTotal(qs.length);
+        // 首题到达 → 切换为答题模式
+        if (genStatusRef.current === 'waiting') {
+          genStatusRef.current = 'streaming';
+          setStreamStatus('streaming');
+          setPhase('question');
+        }
+        // 全部生成完毕 → 停止轮询
+        if (d.status !== 'generating') {
+          genStatusRef.current = 'done';
+          setStreamStatus('done');
+          clearInterval(interval);
         }
       } catch {}
     }, 3000);
