@@ -87,6 +87,7 @@ function SessionContent() {
   const interviewId = searchParams.get('id');
 
   const [questions, setQuestions] = useState<Question[]>([]);
+  const [interviewCategory, setInterviewCategory] = useState('private_enterprise');
   const [currentIndex, setCurrentIndex] = useState(0);
   const [phase, setPhase] = useState<Phase>('question');
   const [loading, setLoading] = useState(true);
@@ -314,7 +315,8 @@ function SessionContent() {
   const loadInterview=useCallback(async()=>{
     if(!interviewId){router.push('/dashboard');return;}
     try{setLoading(true);setError('');
-      const d=await api.get<{questions:Question[];status:string}>(`/api/interview/${interviewId}`);
+      const d=await api.get<{questions:Question[];status:string;category:string}>(`/api/interview/${interviewId}`);
+      if(d.category) setInterviewCategory(d.category);
       if(d.status==='preparing')await api.post(`/api/interview/${interviewId}/start`);
       const qs = d.questions||[];
       setQuestions(qs);
@@ -788,7 +790,9 @@ function SessionContent() {
           </div>
           <p className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">AI 正在出题</p>
           <p className="text-sm text-gray-400 dark:text-gray-500 leading-relaxed">
-            AI 正在分析你的简历和岗位要求，生成个性化面试题
+            {interviewCategory === 'civil_service' ? 'AI 正在搜索该省份近期时政热点，结合省情生成公务员面试题…' :
+             interviewCategory === 'institution' ? 'AI 正在搜索该省份近期时政热点，结合岗位要求生成事业单位面试题…' :
+             'AI 正在分析你的简历和岗位要求，生成个性化面试题'}
           </p>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-4">
             已等待 <span className="font-semibold text-gray-700 dark:text-gray-200">{waitSeconds} 秒</span>
