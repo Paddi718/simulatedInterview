@@ -744,12 +744,8 @@ function SessionContent() {
           <p className="text-sm text-gray-400 dark:text-gray-500 leading-relaxed">
             AI 正在分析你的简历和岗位要求，生成个性化面试题
           </p>
-          {/* 进度条 */}
-          <div className="mt-5 w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 overflow-hidden">
-            <div className="h-full bg-brand-500 rounded-full transition-all duration-500" style={{width: `${Math.round(progress * 100)}%`}} />
-          </div>
-          <p className="text-xs text-gray-400 mt-2">
-            已等待 <span className="font-medium text-gray-600 dark:text-gray-300">{waitSeconds} 秒</span>，预计需要 20-60 秒
+          <p className="text-xs text-gray-400 mt-4">
+            已等待 <span className="font-medium text-gray-600 dark:text-gray-300">{waitSeconds} 秒</span>
           </p>
           {waitSeconds > 60 && (
             <p className="text-xs text-amber-500 mt-2">

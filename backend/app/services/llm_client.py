@@ -111,10 +111,11 @@ async def llm_chat_stream(
                         try:
                             chunk = json.loads(data)
                             delta = chunk["choices"][0].get("delta", {})
-                            # 兼容三种字段：content(标准)/reasoning_content(qwen3.7+/R1)/text(少数)
-                            content = delta.get("content", "") or delta.get("reasoning_content", "") or delta.get("text", "")
-                            if content:
-                                yield content
+                            # 优先 content（标准输出），reasoning_content 是模型"思考过程"不混入
+                            content = delta.get("content", "")
+                            if not content:
+                                continue
+                            yield content
                         except (json.JSONDecodeError, KeyError, IndexError, TypeError):
                             continue
 
