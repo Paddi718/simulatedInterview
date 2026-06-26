@@ -312,7 +312,7 @@ async def _stream_generate_questions(
                 question = InterviewQuestion(
                     interview_id=interview_id,
                     question_text=q["question_text"],
-                    question_type=q.get("question_type", "behavioral"),
+                    question_type=(q.get("question_type", "") or "behavioral")[:50],
                     order_index=count,
                 )
                 db.add(question)
