@@ -464,14 +464,14 @@ async def create_interview(
         )).scalar_one_or_none()
         if not resume:
             raise HTTPException(status_code=404, detail="Resume not found")
-        resume_data = resume.parsed_data or {}
+        resume_data = resume.raw_text or ""
 
         jd = (await db.execute(
             select(JobDescription).where(JobDescription.id == jd_id, JobDescription.user_id == current_user.id)
         )).scalar_one_or_none()
         if not jd:
             raise HTTPException(status_code=404, detail="Job description not found")
-        jd_data = jd.parsed_data or {}
+        jd_data = jd.raw_text or ""
 
     elif category == "institution" and data.resume_id:
         # 事业单位：简历可选
@@ -483,7 +483,7 @@ async def create_interview(
             select(Resume).where(Resume.id == resume_id, Resume.user_id == current_user.id)
         )).scalar_one_or_none()
         if resume:
-            resume_data = resume.parsed_data or {}
+            resume_data = resume.raw_text or ""
 
     elif category == "institution" and data.jd_id:
         # 事业单位：JD 可选
@@ -495,7 +495,7 @@ async def create_interview(
             select(JobDescription).where(JobDescription.id == jd_id, JobDescription.user_id == current_user.id)
         )).scalar_one_or_none()
         if jd:
-            jd_data = jd.parsed_data or {}
+            jd_data = jd.raw_text or ""
 
     # ── 验证 category_config ──
     if category in ("civil_service", "institution"):
@@ -662,9 +662,9 @@ async def score_single_question(
     resume_data, jd_data = {}, {}
     if i:
         rr = (await db.execute(select(Resume).where(Resume.id == i.resume_id))).scalar_one_or_none()
-        resume_data = rr.parsed_data if rr else {}
+        resume_data = rr.raw_text or "" if rr else ""
         jr = (await db.execute(select(JobDescription).where(JobDescription.id == i.jd_id))).scalar_one_or_none()
-        jd_data = jr.parsed_data if jr else {}
+        jd_data = jr.raw_text or "" if jr else ""
     scores = await do_score(question, resume_data, jd_data)
     question.ai_score = scores.get("total_score", 0)
     question.score_detail = {k: v for k, v in scores.items() if k in ["content_completeness", "professionalism", "expression", "star_method"]}
@@ -720,10 +720,10 @@ async def submit_answer(
                         return
                     rr = await bg_db.execute(select(RModel).where(RModel.id == i.resume_id))
                     resume = rr.scalar_one_or_none()
-                    resume_data = resume.parsed_data if resume else {}
+                    resume_data = resume.raw_text or "" if resume else ""
                     jr = await bg_db.execute(select(JDModel).where(JDModel.id == i.jd_id))
                     jd = jr.scalar_one_or_none()
-                    jd_data = jd.parsed_data if jd else {}
+                    jd_data = jd.raw_text or "" if jd else ""
                     scores = await do_score(q, resume_data, jd_data)
                     q.ai_score = scores.get("total_score", 0)
                     q.score_detail = {

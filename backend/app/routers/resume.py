@@ -1,10 +1,9 @@
-import asyncio
 import uuid
 import os
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from app.database import get_db, async_session_factory
+from app.database import get_db
 from app.models.user import User
 from app.models.resume import Resume
 from app.schemas.resume import ResumeResponse, ResumeListResponse
@@ -16,46 +15,20 @@ from app.services.resume_parser import (
 router = APIRouter(prefix="/api/resume", tags=["resume"])
 
 
-async def _parse_resume_background(resume_id: uuid.UUID, raw_text: str, user_llm_config: dict | None):
-    """后台异步解析简历：不阻塞上传响应，解析完更新 DB"""
-    import traceback as tb
-    try:
-        from app.services.llm_client import llm_parse, extract_llm_config
-        llm_key, llm_base, llm_model = extract_llm_config(user_llm_config)
-        print(f"[ResumeParse] start id={resume_id} text_len={len(raw_text)} key_ok={bool(llm_key)}", flush=True)
-        parsed = await llm_parse(raw_text, api_key=llm_key, api_base=llm_base, model=llm_model, timeout=180.0)
-        print(f"[ResumeParse] done id={resume_id}", flush=True)
-    except Exception:
-        print(f"[ResumeParse] FAIL id={resume_id}: {tb.format_exc()}", flush=True)
-        parsed = {
-            "basic": {"name": "", "education": []},
-            "experience": [], "skills": [], "certifications": [],
-            "projects": [], "self_evaluation": "",
-        }
-
-    try:
-        async with async_session_factory() as db:
-            result = await db.execute(select(Resume).where(Resume.id == resume_id))
-            resume = result.scalar_one_or_none()
-            if resume:
-                resume.parsed_data = parsed
-                await db.commit()
-                print(f"[ResumeParse] saved id={resume_id}", flush=True)
-    except Exception:
-        print(f"[ResumeParse] save FAIL id={resume_id}: {tb.format_exc()}", flush=True)
-
-
 @router.post("/upload", response_model=ResumeResponse, status_code=201)
 async def upload_resume(
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """上传简历：PyMuPDF 提取文字 → 存 raw_text，秒级返回。
+    不调 LLM 解析——面试出题时直接用 raw_text 喂 LLM，更准且不浪费请求。"""
     content = await file.read()
     ext = f".{file.filename.split('.')[-1].lower()}" if file.filename else ".txt"
     validate_file(file.filename, len(content))
 
     filepath = save_upload_file(content, current_user.id, file.filename)
+    raw_text = ""
     try:
         raw_text = extract_text(filepath, ext)
     except Exception as e:
@@ -64,34 +37,26 @@ async def upload_resume(
     if not raw_text or len(raw_text.strip()) < 20:
         raise HTTPException(
             status_code=400,
-            detail="未能从文件中提取到文字。文件可能为扫描版图片PDF，请使用Word或可选中文字的PDF。",
+            detail="未能从文件中提取到文字。文件可能为扫描版图片PDF，请使用可选中文字的PDF。",
         )
 
-    # 先存盘 + 空解析数据，立刻返回（不阻塞等 LLM）
-    empty_parsed = {
-        "basic": {"name": "", "education": []},
-        "experience": [], "skills": [], "certifications": [],
-        "projects": [], "self_evaluation": "",
-        "_parsing": True,  # 前端可据此显示"解析中"
-    }
     resume = Resume(
         user_id=current_user.id,
         original_filename=file.filename,
         file_path=filepath,
         file_type=ext.lstrip('.'),
-        parsed_data=empty_parsed,
+        raw_text=raw_text.strip(),
+        parsed_data=None,
     )
     db.add(resume)
     await db.commit()
     await db.refresh(resume)
 
-    # 后台异步解析
-    asyncio.create_task(_parse_resume_background(resume.id, raw_text, current_user.llm_config))
-
     return ResumeResponse(
         id=str(resume.id),
         original_filename=resume.original_filename,
         file_type=resume.file_type,
+        raw_text=resume.raw_text,
         parsed_data=resume.parsed_data,
         created_at=resume.created_at.isoformat(),
     )
@@ -112,6 +77,7 @@ async def list_resumes(
                 id=str(r.id),
                 original_filename=r.original_filename,
                 file_type=r.file_type,
+                raw_text=r.raw_text,
                 parsed_data=r.parsed_data,
                 created_at=r.created_at.isoformat(),
             )
@@ -137,6 +103,7 @@ async def get_resume(
         id=str(resume.id),
         original_filename=resume.original_filename,
         file_type=resume.file_type,
+        raw_text=resume.raw_text,
         parsed_data=resume.parsed_data,
         created_at=resume.created_at.isoformat(),
     )
@@ -155,11 +122,8 @@ async def delete_resume(
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
 
-    # 解除关联面试的引用（避免 FK 约束阻止删除）
+    # 解除关联面试的引用
     from app.models.interview import Interview
-    await db.execute(
-        select(Interview).where(Interview.resume_id == resume_id)
-    )
     intv_rows = (await db.execute(
         select(Interview).where(Interview.resume_id == resume_id)
     )).scalars().all()

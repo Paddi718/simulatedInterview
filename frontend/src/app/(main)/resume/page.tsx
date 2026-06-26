@@ -26,6 +26,7 @@ interface Resume {
   original_filename: string;
   file_type: string;
   created_at: string;
+  raw_text?: string | null;
   parsed_data?: {
     basic?: { name?: string; email?: string; phone?: string; education?: any[] };
     skills?: string[];
@@ -408,7 +409,12 @@ export default function ResumePage() {
               {detailResume?.file_type?.toUpperCase()} · {detailResume?.created_at ? formatDate(detailResume.created_at) : ''}
             </DialogDescription>
           </DialogHeader>
-          {detailResume?.parsed_data ? (
+          {detailResume?.raw_text ? (
+            <div className="text-sm">
+              <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">简历原文</h3>
+              <pre className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 text-gray-600 dark:text-gray-400 whitespace-pre-wrap text-xs leading-relaxed max-h-96 overflow-y-auto">{detailResume.raw_text}</pre>
+            </div>
+          ) : detailResume?.parsed_data ? (
             <div className="space-y-4 text-sm">
               {detailResume.parsed_data.basic && (
                 <div>
