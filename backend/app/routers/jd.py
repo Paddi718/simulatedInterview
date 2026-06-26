@@ -14,11 +14,15 @@ router = APIRouter(prefix="/api/jd", tags=["job_description"])
 
 async def _parse_jd_background(jd_id: uuid.UUID, raw_text: str, user_llm_config: dict | None):
     """后台异步解析 JD：不阻塞创建响应，解析完更新 DB"""
+    import traceback as tb
     try:
         from app.services.llm_client import llm_parse_jd, extract_llm_config
         llm_key, llm_base, llm_model = extract_llm_config(user_llm_config)
+        print(f"[JDParse] start id={jd_id} text_len={len(raw_text)} key_ok={bool(llm_key)}", flush=True)
         parsed = await llm_parse_jd(raw_text, api_key=llm_key, api_base=llm_base, model=llm_model)
+        print(f"[JDParse] done id={jd_id}", flush=True)
     except Exception:
+        print(f"[JDParse] FAIL id={jd_id}: {tb.format_exc()}", flush=True)
         parsed = {"position": "", "requirements": [], "key_responsibilities": []}
 
     try:
@@ -28,8 +32,9 @@ async def _parse_jd_background(jd_id: uuid.UUID, raw_text: str, user_llm_config:
             if jd:
                 jd.parsed_data = parsed
                 await db.commit()
+                print(f"[JDParse] saved id={jd_id}", flush=True)
     except Exception:
-        pass  # 后台更新失败不影响主流程
+        print(f"[JDParse] save FAIL id={jd_id}: {tb.format_exc()}", flush=True)
 
 
 @router.post("/create", response_model=JDResponse, status_code=201)
@@ -110,6 +115,16 @@ async def delete_jd(
     jd = result.scalar_one_or_none()
     if not jd:
         raise HTTPException(status_code=404, detail="JD not found")
+
+    # 解除关联面试的引用
+    from app.models.interview import Interview
+    intv_rows = (await db.execute(
+        select(Interview).where(Interview.jd_id == jd_id)
+    )).scalars().all()
+    for intv in intv_rows:
+        intv.jd_id = None
+    await db.flush()
+
     await db.delete(jd)
     await db.commit()
     return {"code": 0, "message": "ok"}

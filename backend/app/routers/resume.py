@@ -18,11 +18,15 @@ router = APIRouter(prefix="/api/resume", tags=["resume"])
 
 async def _parse_resume_background(resume_id: uuid.UUID, raw_text: str, user_llm_config: dict | None):
     """后台异步解析简历：不阻塞上传响应，解析完更新 DB"""
+    import traceback as tb
     try:
         from app.services.llm_client import llm_parse, extract_llm_config
         llm_key, llm_base, llm_model = extract_llm_config(user_llm_config)
+        print(f"[ResumeParse] start id={resume_id} text_len={len(raw_text)} key_ok={bool(llm_key)}", flush=True)
         parsed = await llm_parse(raw_text, api_key=llm_key, api_base=llm_base, model=llm_model)
+        print(f"[ResumeParse] done id={resume_id}", flush=True)
     except Exception:
+        print(f"[ResumeParse] FAIL id={resume_id}: {tb.format_exc()}", flush=True)
         parsed = {
             "basic": {"name": "", "education": []},
             "experience": [], "skills": [], "certifications": [],
@@ -36,8 +40,9 @@ async def _parse_resume_background(resume_id: uuid.UUID, raw_text: str, user_llm
             if resume:
                 resume.parsed_data = parsed
                 await db.commit()
+                print(f"[ResumeParse] saved id={resume_id}", flush=True)
     except Exception:
-        pass
+        print(f"[ResumeParse] save FAIL id={resume_id}: {tb.format_exc()}", flush=True)
 
 
 @router.post("/upload", response_model=ResumeResponse, status_code=201)
@@ -149,6 +154,19 @@ async def delete_resume(
     resume = result.scalar_one_or_none()
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
+
+    # 解除关联面试的引用（避免 FK 约束阻止删除）
+    from app.models.interview import Interview
+    await db.execute(
+        select(Interview).where(Interview.resume_id == resume_id)
+    )
+    intv_rows = (await db.execute(
+        select(Interview).where(Interview.resume_id == resume_id)
+    )).scalars().all()
+    for intv in intv_rows:
+        intv.resume_id = None
+    await db.flush()
+
     if os.path.exists(resume.file_path):
         os.remove(resume.file_path)
     await db.delete(resume)
