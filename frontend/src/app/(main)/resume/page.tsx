@@ -26,6 +26,14 @@ interface Resume {
   original_filename: string;
   file_type: string;
   created_at: string;
+  parsed_data?: {
+    basic?: { name?: string; email?: string; phone?: string; education?: any[] };
+    skills?: string[];
+    experience?: any[];
+    projects?: any[];
+    certifications?: string[];
+    self_evaluation?: string;
+  } | null;
 }
 
 const fileIconColors: Record<string, string> = {
@@ -121,6 +129,7 @@ export default function ResumePage() {
   const [deleteTarget, setDeleteTarget] = useState<Resume | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [detailResume, setDetailResume] = useState<Resume | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -346,7 +355,8 @@ export default function ResumePage() {
               return (
                 <div
                   key={r.id}
-                  className="group flex items-center gap-4 bg-white dark:bg-gray-900/80 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 p-5 hover:border-gray-200 dark:hover:border-gray-700 hover:shadow-md transition-all duration-200"
+                  onClick={() => setDetailResume(r)}
+                  className="group flex items-center gap-4 bg-white dark:bg-gray-900/80 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 p-5 hover:border-gray-200 dark:hover:border-gray-700 hover:shadow-md transition-all duration-200 cursor-pointer"
                 >
                   {/* File icon */}
                   <div className="w-10 h-10 rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center shrink-0">
@@ -365,7 +375,7 @@ export default function ResumePage() {
 
                   {/* Delete button */}
                   <button
-                    onClick={() => setDeleteTarget(r)}
+                    onClick={(e) => { e.stopPropagation(); setDeleteTarget(r); }}
                     className="w-8 h-8 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-400 hover:text-red-500 hover:border-red-200 dark:hover:border-red-800 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-200 shadow-sm"
                     title="删除简历"
                   >
@@ -388,6 +398,84 @@ export default function ResumePage() {
         deleting={deleting}
         fileName={deleteTarget?.original_filename || ''}
       />
+
+      {/* Resume Detail Dialog */}
+      <Dialog open={detailResume !== null} onOpenChange={(open) => { if (!open) setDetailResume(null); }}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{detailResume?.original_filename}</DialogTitle>
+            <DialogDescription>
+              {detailResume?.file_type?.toUpperCase()} · {detailResume?.created_at ? formatDate(detailResume.created_at) : ''}
+            </DialogDescription>
+          </DialogHeader>
+          {detailResume?.parsed_data ? (
+            <div className="space-y-4 text-sm">
+              {detailResume.parsed_data.basic && (
+                <div>
+                  <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-1">基本信息</h3>
+                  <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 space-y-1">
+                    {detailResume.parsed_data.basic.name && <p><span className="text-gray-400">姓名：</span>{detailResume.parsed_data.basic.name}</p>}
+                    {detailResume.parsed_data.basic.email && <p><span className="text-gray-400">邮箱：</span>{detailResume.parsed_data.basic.email}</p>}
+                    {detailResume.parsed_data.basic.phone && <p><span className="text-gray-400">电话：</span>{detailResume.parsed_data.basic.phone}</p>}
+                  </div>
+                </div>
+              )}
+              {detailResume.parsed_data.skills && detailResume.parsed_data.skills.length > 0 && (
+                <div>
+                  <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-1">技能</h3>
+                  <div className="flex flex-wrap gap-1.5">
+                    {detailResume.parsed_data.skills.map((s, i) => (
+                      <span key={i} className="px-2 py-0.5 bg-brand-50 dark:bg-brand-950/30 text-brand-700 dark:text-brand-300 rounded text-xs">{s}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {detailResume.parsed_data.experience && detailResume.parsed_data.experience.length > 0 && (
+                <div>
+                  <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-1">工作经历</h3>
+                  <div className="space-y-2">
+                    {detailResume.parsed_data.experience.map((exp: any, i: number) => (
+                      <div key={i} className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
+                        <p className="font-medium">{exp.company || ''} {exp.position ? `· ${exp.position}` : ''}</p>
+                        {exp.duration && <p className="text-xs text-gray-400">{exp.duration}</p>}
+                        {exp.description && <p className="text-xs text-gray-500 mt-1">{exp.description}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {detailResume.parsed_data.projects && detailResume.parsed_data.projects.length > 0 && (
+                <div>
+                  <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-1">项目经历</h3>
+                  <div className="space-y-2">
+                    {detailResume.parsed_data.projects.map((proj: any, i: number) => (
+                      <div key={i} className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
+                        <p className="font-medium">{proj.name || ''}</p>
+                        {proj.description && <p className="text-xs text-gray-500 mt-1">{proj.description}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {detailResume.parsed_data.self_evaluation && (
+                <div>
+                  <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-1">自我评价</h3>
+                  <p className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3 text-gray-600 dark:text-gray-400">{detailResume.parsed_data.self_evaluation}</p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-400">
+              <FileText className="h-10 w-10 mx-auto mb-2 opacity-30" />
+              <p className="text-sm">暂无解析数据</p>
+              <p className="text-xs mt-1">请确保简历可正常解析后重新上传</p>
+            </div>
+          )}
+          <DialogClose asChild>
+            <Button variant="secondary" className="mt-4 w-full">关闭</Button>
+          </DialogClose>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
