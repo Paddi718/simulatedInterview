@@ -48,6 +48,7 @@ async def llm_chat(
     api_key: Optional[str] = None,
     api_base: Optional[str] = None,
     model: Optional[str] = None,
+    timeout: float = 90.0,
 ) -> str:
     """调用 LLM API 获取回复。支持用户自定义 API 配置。"""
     headers = {
@@ -60,7 +61,7 @@ async def llm_chat(
         "temperature": temperature,
     }
 
-    async with httpx.AsyncClient(timeout=90.0) as client:
+    async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.post(
             f"{api_base or settings.llm_api_base}/chat/completions",
             headers=headers,
@@ -112,21 +113,21 @@ async def llm_chat_stream(
                         continue
 
 
-async def llm_parse(text: str, api_key: str | None = None, api_base: str | None = None, model: str | None = None) -> dict:
+async def llm_parse(text: str, api_key: str | None = None, api_base: str | None = None, model: str | None = None, timeout: float = 90.0) -> dict:
     """LLM 解析简历（提示词从 YAML 加载）"""
-    system, prompt, temp = load_prompt("resume_parse", text=text[:15000])
+    system, prompt, temp = load_prompt("resume_parse", text=text[:6000])
     result = await llm_chat([
         {"role": "system", "content": system},
         {"role": "user", "content": prompt},
-    ], temperature=temp, api_key=api_key, api_base=api_base, model=model)
+    ], temperature=temp, api_key=api_key, api_base=api_base, model=model, timeout=timeout)
     return json.loads(_clean_json(result))
 
 
-async def llm_parse_jd(text: str, api_key: str | None = None, api_base: str | None = None, model: str | None = None) -> dict:
+async def llm_parse_jd(text: str, api_key: str | None = None, api_base: str | None = None, model: str | None = None, timeout: float = 90.0) -> dict:
     """LLM 解析 JD（提示词从 YAML 加载）"""
     system, prompt, temp = load_prompt("jd_parse", text=text[:8000])
     result = await llm_chat([
         {"role": "system", "content": system},
         {"role": "user", "content": prompt},
-    ], temperature=temp, api_key=api_key, api_base=api_base, model=model)
+    ], temperature=temp, api_key=api_key, api_base=api_base, model=model, timeout=timeout)
     return json.loads(_clean_json(result))

@@ -23,7 +23,7 @@ async def _parse_resume_background(resume_id: uuid.UUID, raw_text: str, user_llm
         from app.services.llm_client import llm_parse, extract_llm_config
         llm_key, llm_base, llm_model = extract_llm_config(user_llm_config)
         print(f"[ResumeParse] start id={resume_id} text_len={len(raw_text)} key_ok={bool(llm_key)}", flush=True)
-        parsed = await llm_parse(raw_text, api_key=llm_key, api_base=llm_base, model=llm_model)
+        parsed = await llm_parse(raw_text, api_key=llm_key, api_base=llm_base, model=llm_model, timeout=180.0)
         print(f"[ResumeParse] done id={resume_id}", flush=True)
     except Exception:
         print(f"[ResumeParse] FAIL id={resume_id}: {tb.format_exc()}", flush=True)

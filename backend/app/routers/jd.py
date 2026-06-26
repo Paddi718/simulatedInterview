@@ -19,7 +19,7 @@ async def _parse_jd_background(jd_id: uuid.UUID, raw_text: str, user_llm_config:
         from app.services.llm_client import llm_parse_jd, extract_llm_config
         llm_key, llm_base, llm_model = extract_llm_config(user_llm_config)
         print(f"[JDParse] start id={jd_id} text_len={len(raw_text)} key_ok={bool(llm_key)}", flush=True)
-        parsed = await llm_parse_jd(raw_text, api_key=llm_key, api_base=llm_base, model=llm_model)
+        parsed = await llm_parse_jd(raw_text, api_key=llm_key, api_base=llm_base, model=llm_model, timeout=180.0)
         print(f"[JDParse] done id={jd_id}", flush=True)
     except Exception:
         print(f"[JDParse] FAIL id={jd_id}: {tb.format_exc()}", flush=True)
