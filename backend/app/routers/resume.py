@@ -27,7 +27,16 @@ async def upload_resume(
     validate_file(file.filename, len(content))
 
     filepath = save_upload_file(content, current_user.id, file.filename)
-    raw_text = extract_text(filepath, ext)
+    try:
+        raw_text = extract_text(filepath, ext)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"文件解析失败：{e}")
+
+    if not raw_text or len(raw_text.strip()) < 20:
+        raise HTTPException(
+            status_code=400,
+            detail="未能从文件中提取到文字。文件可能为扫描版图片PDF，请使用Word或可选中文字的PDF。",
+        )
 
     # LLM 解析 (try real LLM first, fallback to basic extract)
     try:
