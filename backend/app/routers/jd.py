@@ -1,8 +1,9 @@
 import uuid
+import asyncio
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from app.database import get_db
+from app.database import get_db, async_session_factory
 from app.models.user import User
 from app.models.job_description import JobDescription
 from app.schemas.jd import JDCreate, JDResponse, JDListResponse
@@ -11,28 +12,45 @@ from app.utils.auth import get_current_user
 router = APIRouter(prefix="/api/jd", tags=["job_description"])
 
 
+async def _parse_jd_background(jd_id: uuid.UUID, raw_text: str, user_llm_config: dict | None):
+    """后台异步解析 JD：不阻塞创建响应，解析完更新 DB"""
+    try:
+        from app.services.llm_client import llm_parse_jd, extract_llm_config
+        llm_key, llm_base, llm_model = extract_llm_config(user_llm_config)
+        parsed = await llm_parse_jd(raw_text, api_key=llm_key, api_base=llm_base, model=llm_model)
+    except Exception:
+        parsed = {"position": "", "requirements": [], "key_responsibilities": []}
+
+    try:
+        async with async_session_factory() as db:
+            result = await db.execute(select(JobDescription).where(JobDescription.id == jd_id))
+            jd = result.scalar_one_or_none()
+            if jd:
+                jd.parsed_data = parsed
+                await db.commit()
+    except Exception:
+        pass  # 后台更新失败不影响主流程
+
+
 @router.post("/create", response_model=JDResponse, status_code=201)
 async def create_jd(
     data: JDCreate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    try:
-        from app.services.llm_client import llm_parse_jd, extract_llm_config
-        llm_key, llm_base, llm_model = extract_llm_config(current_user.llm_config)
-        parsed = await llm_parse_jd(data.raw_text, api_key=llm_key, api_base=llm_base, model=llm_model)
-    except Exception:
-        parsed = {"position": "", "requirements": [], "key_responsibilities": []}
-
+    # 先存原始数据，立刻返回（不阻塞等 LLM）
     jd = JobDescription(
         user_id=current_user.id,
         raw_text=data.raw_text,
-        parsed_data=parsed,
+        parsed_data={"position": "", "requirements": [], "key_responsibilities": [], "_parsing": True},
         source="paste",
     )
     db.add(jd)
     await db.commit()
     await db.refresh(jd)
+
+    # 后台异步解析
+    asyncio.create_task(_parse_jd_background(jd.id, data.raw_text, current_user.llm_config))
 
     return JDResponse(
         id=str(jd.id),
