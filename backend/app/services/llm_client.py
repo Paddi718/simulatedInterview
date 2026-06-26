@@ -106,7 +106,7 @@ async def llm_chat_stream(
                     try:
                         chunk = json.loads(data)
                         delta = chunk["choices"][0].get("delta", {})
-                        content = delta.get("content", "")
+                        content = delta.get("content", "") or delta.get("reasoning_content", "")
                         if content:
                             yield content
                     except (json.JSONDecodeError, KeyError, IndexError):
