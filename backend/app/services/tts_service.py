@@ -40,9 +40,10 @@ async def synthesize_speech(text: str, voice: str = "zh-CN-XiaoxiaoNeural", spee
     if cached is not None:
         return cached
 
-    # 2. 缓存未命中 → 联网合成
+    # 2. 缓存未命中 → 联网合成（截断长文本，Edge TTS 对过长文本会失败）
     rate = _speed_to_rate(speed)
-    communicate = edge_tts.Communicate(text, voice, rate=rate)
+    tts_text = text[:800] if len(text) > 800 else text
+    communicate = edge_tts.Communicate(tts_text, voice, rate=rate)
 
     buffer = io.BytesIO()
     async for chunk in communicate.stream():

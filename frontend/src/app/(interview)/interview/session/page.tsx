@@ -256,7 +256,7 @@ function SessionContent() {
     };
 
     try{
-      const buf=await tryFetch(15);  // 最多等 15 秒（15次×1s）
+      const buf=await tryFetch(10);  // 最多等 10 秒（10次×1s）
       if(!mountedRef.current)return;
       setAudioLoading(false);
       playTts(buf);

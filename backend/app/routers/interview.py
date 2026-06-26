@@ -3,6 +3,9 @@ import asyncio
 import json
 import tempfile
 import os
+
+# TTS 失败计数：同一文本超过 3 次就放弃，防止无限重试风暴
+_tts_fail_count: dict = {}
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1001,6 +1004,9 @@ async def get_question_audio(
 
     # 缓存未命中 → 后台异步生成，立即返回 202 让前端轮询
     cache_key = tts_cache_key(question.question_text, voice, speed)
+    # 防无限重试：同段文本失败 3 次后放弃
+    if _tts_fail_count.get(cache_key, 0) >= 3:
+        return Response(status_code=204)  # 放弃
     if cache_key not in _pending_tts:
         _pending_tts.add(cache_key)
 
@@ -1018,6 +1024,7 @@ async def get_question_audio(
                         )
                         await s.commit()
             except Exception as e:
+                _tts_fail_count[cache_key] = _tts_fail_count.get(cache_key, 0) + 1
                 print(f"[TTS bg] Failed for Q{question.id}: {e}")
             finally:
                 _pending_tts.discard(cache_key)
