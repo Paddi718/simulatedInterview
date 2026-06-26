@@ -124,9 +124,20 @@ function SessionContent() {
         const qs = (d.questions || []).filter((q:any) => q.question_text && q.question_text !== '...');
         if (qs.length > 0 && mountedRef.current) {
           setQuestions(qs);
-          setGenTotal(qs.length); setGenCount(qs.length);
-          genStatusRef.current = 'done'; setStreamStatus('done');
-          setPhase('question'); clearInterval(interval);
+          setGenCount(qs.length);
+          // 首题到达 → 切换为流式出题模式（可看到剩余题目生成）
+          if (genStatusRef.current === 'waiting') {
+            genStatusRef.current = 'streaming';
+            setStreamStatus('streaming');
+            setPhase('question');
+          }
+          // 全部完成 → 停止轮询
+          if (d.status !== 'generating' || qs.length >= 10) {
+            genStatusRef.current = 'done';
+            setStreamStatus('done');
+            setGenTotal(qs.length);
+            clearInterval(interval);
+          }
         }
       } catch {}
     }, 3000);
