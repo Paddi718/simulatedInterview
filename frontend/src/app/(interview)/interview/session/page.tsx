@@ -109,6 +109,12 @@ function SessionContent() {
   // 流式出题状态: idle=正常 | waiting=等Q1(全屏动画) | streaming=已出Q1剩余生成中 | done=全部完成
   const [streamStatus, setStreamStatus] = useState<'idle'|'waiting'|'streaming'|'done'>('idle');
   const genStatusRef = useRef<'idle'|'waiting'|'streaming'|'done'>('idle'); // SSE 闭包内使用
+  const [waitSeconds, setWaitSeconds] = useState(0);
+  useEffect(() => {
+    if (streamStatus !== 'waiting') { setWaitSeconds(0); return; }
+    const t = setInterval(() => setWaitSeconds(s => s + 1), 1000);
+    return () => clearInterval(t);
+  }, [streamStatus]);
   const [genTotal, setGenTotal] = useState(0);
   const [genCount, setGenCount] = useState(0);
 
@@ -721,14 +727,6 @@ function SessionContent() {
       </div>
     );
   }
-
-  // Waiting 计时
-  const [waitSeconds, setWaitSeconds] = useState(0);
-  useEffect(() => {
-    if (streamStatus !== 'waiting') { setWaitSeconds(0); return; }
-    const t = setInterval(() => setWaitSeconds(s => s + 1), 1000);
-    return () => clearInterval(t);
-  }, [streamStatus]);
 
   // Waiting state — 等 Q1，显示动画+计时
   if(streamStatus === 'waiting' && questions.length === 0) {
