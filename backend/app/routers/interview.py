@@ -297,7 +297,6 @@ async def _stream_generate_questions(
     model: str | None,
 ):
     """后台任务：流式生成题目 → 存入 DB → 推送到 SSE 队列"""
-    print(f"[StreamGen] START interview={interview_id} prompt={prompt_name}", flush=True)
     from app.services.question_generator import generate_questions_stream
 
     queue = _get_question_queue(str(interview_id))

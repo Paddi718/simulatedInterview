@@ -68,7 +68,8 @@ async def llm_chat(
             json=payload,
         )
         resp.raise_for_status()
-        return resp.json()["choices"][0]["message"]["content"]
+        msg = resp.json()["choices"][0]["message"]
+        return msg.get("content", "") or msg.get("reasoning_content", "") or ""
 
 
 async def llm_chat_stream(
@@ -97,20 +98,25 @@ async def llm_chat_stream(
             headers=headers,
             json=payload,
         ) as resp:
-            resp.raise_for_status()
-            async for line in resp.aiter_lines():
-                if line.startswith("data: "):
-                    data = line[6:]
-                    if data == "[DONE]":
-                        break
-                    try:
-                        chunk = json.loads(data)
-                        delta = chunk["choices"][0].get("delta", {})
-                        content = delta.get("content", "") or delta.get("reasoning_content", "")
-                        if content:
-                            yield content
-                    except (json.JSONDecodeError, KeyError, IndexError):
+                resp.raise_for_status()
+                async for line in resp.aiter_lines():
+                    line = line.strip()
+                    if not line:
                         continue
+                    # SSE: "data: ..." or "data:..."（适配不同厂商格式）
+                    if line.startswith("data:"):
+                        data = line[5:].lstrip()
+                        if not data or data == "[DONE]" or data.startswith("[DONE]"):
+                            break
+                        try:
+                            chunk = json.loads(data)
+                            delta = chunk["choices"][0].get("delta", {})
+                            # 兼容三种字段：content(标准)/reasoning_content(qwen3.7+/R1)/text(少数)
+                            content = delta.get("content", "") or delta.get("reasoning_content", "") or delta.get("text", "")
+                            if content:
+                                yield content
+                        except (json.JSONDecodeError, KeyError, IndexError, TypeError):
+                            continue
 
 
 async def llm_parse(text: str, api_key: str | None = None, api_base: str | None = None, model: str | None = None, timeout: float = 90.0) -> dict:
