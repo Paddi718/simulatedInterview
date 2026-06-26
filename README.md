@@ -164,8 +164,8 @@ simulatedInterview/
 | 页面 | 功能 |
 |------|------|
 | 管理仪表盘 | 系统统计（总用户/今日面试/7日活跃）+ 最近用户/面试 |
-| 用户管理 | 搜索/分页/详情/设为管理员/禁用/恢复/软删除/硬删除 |
-| 面试管理 | 按类别筛选/分页/删除 |
+| 用户管理 | 搜索/分页/详情/设为管理员/禁用/恢复/软删除/硬删除/在线状态（🟢/⚫） |
+| 面试管理 | 按类别筛选/分页/删除/题目数量显示 |
 | 系统配置 | 搜索 Key + 邮箱 SMTP + ASR（在线/本地切换），可视化修改即时生效 |
 
 **创建管理员**：在 `.env` 中设置 `FIRST_ADMIN_USERNAME` / `FIRST_ADMIN_PASSWORD` / `FIRST_ADMIN_EMAIL`，首次启动自动创建。
@@ -224,14 +224,14 @@ simulatedInterview/
 
 ## 📊 数据模型
 
-- **User** — 用户信息（含 JWT 认证、邮箱验证、管理员角色、禁用/软删除标记）
-- **Resume** — 简历（上传 + 解析结果）
-- **JobDescription** — 岗位介绍（JD）
+- **User** — 用户信息（含 JWT 认证、邮箱验证、管理员角色、禁用/软删除标记、最后活跃时间）
+- **Resume** — 简历（上传 + PyMuPDF 提取原文 `raw_text`，面试出题直接引用）
+- **JobDescription** — 岗位介绍（JD，存储原始文本，面试出题直接引用）
 - **Interview** — 面试会话（含总分、维度评分、总评、类别配置、评分状态）
 - **InterviewQuestion** — 面试题目（含回答、逐题评分、参考答案、TTS 缓存路径）
 - **InterviewDocument** — 导出的文档记录
 - **FavoritedQuestion** — 收藏的题目
-- **SystemConfig** — 系统配置（Key-Value，搜索 API Key 等）
+- **SystemConfig** — 系统配置（Key-Value，搜索/ASR/SMTP 等）
 
 ## ⚡ 性能优化
 
@@ -242,6 +242,9 @@ simulatedInterview/
 - **流式音频转写**: VAD 分段 + WebSocket PCM 流，桌面/手机统一实时显示
 - **ASR 信号量**: 限制并行转录数，保护 API 速率和带宽
 - **后端镜像瘦身**: 移除 torch/funasr 依赖（约 1 GB），镜像从 2.5 GB → 1 GB
+- **推理模型兼容**: llm_chat_stream 兼容 `reasoning_content` 字段（qwen3.7+/R1 等推理模型）
+- **出题等待优化**: 流式生成 + 3 秒轮询降级，首题即显示，进度实时更新
+- **管理员在线状态**: 用户认证时自动记录 `last_active_at`，管理后台展示在线/离线
 - **前端相对路径**: API 请求走 Next.js Rewrite，后端地址不暴露
 
 ## 📄 许可
