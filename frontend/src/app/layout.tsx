@@ -20,6 +20,12 @@ export default function RootLayout({
       <body className={inter.className}>
         <ThemeProvider>
           {children}
+          {/* ICP 备案号 */}
+          <div className="text-center py-3 text-[11px] text-gray-300 dark:text-gray-600">
+            <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer" className="hover:text-gray-400 dark:hover:text-gray-500 transition-colors">
+              皖ICP备2026020023号
+            </a>
+          </div>
         </ThemeProvider>
       </body>
     </html>
