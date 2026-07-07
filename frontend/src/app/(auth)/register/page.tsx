@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useAuthStore } from '@/store/authStore';
 import { Mail, Lock, Eye, EyeOff, Loader2, Sparkles, ShieldCheck, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import IcpBadge from '@/components/layout/IcpBadge';
 
 export default function RegisterPage() {
   const [username, setUsername] = useState('');
@@ -124,7 +125,8 @@ export default function RegisterPage() {
       </div>
 
       {/* Right Form Side */}
-      <div className="flex-1 flex items-center justify-center p-8 bg-white dark:bg-gray-950">
+      <div className="flex-1 flex flex-col bg-white dark:bg-gray-950">
+        <div className="flex-1 flex items-center justify-center p-8">
         <div className="w-full max-w-sm">
           <div className="mb-8">
             <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
@@ -330,6 +332,8 @@ export default function RegisterPage() {
             </Link>
           </p>
         </div>
+      </div>
+      <IcpBadge />
       </div>
     </div>
   );
