@@ -3,6 +3,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+import hashlib
+import asyncio as _asyncio
 from app.database import init_db
 from app.routers import auth as auth_router
 from app.routers import resume as resume_router
@@ -70,6 +72,61 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["Content-Type", "Authorization"],
 )
+
+
+# ---------- 全站访问统计 ----------
+_traffic_buffer: dict = {}  # f"{date}|{path}" → count
+_traffic_lock = _asyncio.Lock()
+
+_SKIP_PREFIXES = ("/api/health", "/api/ws/", "/api/cache/", "/_next/", "/favicon")
+_SKIP_SUFFIXES = (".js", ".css", ".json", ".svg", ".ico", ".png", ".map", ".woff", ".woff2")
+
+
+async def _flush_traffic():
+    """每 60 秒将内存计数批量写入 DB"""
+    while True:
+        await _asyncio.sleep(60)
+        async with _traffic_lock:
+            if not _traffic_buffer:
+                continue
+            batch = _traffic_buffer.copy()
+            _traffic_buffer.clear()
+        try:
+            from datetime import date as _date
+            from sqlalchemy import text
+            from app.database import async_session_factory
+            today = _date.today()
+            async with async_session_factory() as db:
+                for key, count in batch.items():
+                    parts = key.split("|", 2)
+                    if len(parts) != 2:
+                        continue
+                    path = parts[1][:100]
+                    for _ in range(count):
+                        await db.execute(
+                            text("INSERT INTO daily_stats (date, path, count) VALUES (:d, :p, 1)"),
+                            {"d": today, "p": path},
+                        )
+                await db.commit()
+        except Exception:
+            pass
+
+
+@app.on_event("startup")
+async def start_traffic_flusher():
+    _asyncio.create_task(_flush_traffic())
+
+
+@app.middleware("http")
+async def traffic_middleware(request: Request, call_next):
+    response = await call_next(request)
+    if response.status_code < 400:  # 只统计成功请求
+        path = request.url.path
+        if not path.startswith(tuple(_SKIP_PREFIXES)) and not path.endswith(tuple(_SKIP_SUFFIXES)):
+            key = f"_|{path}"
+            async with _traffic_lock:
+                _traffic_buffer[key] = _traffic_buffer.get(key, 0) + 1
+    return response
 
 
 # ---------- 安全响应头 ----------

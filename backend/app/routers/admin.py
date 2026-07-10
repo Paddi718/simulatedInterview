@@ -358,6 +358,65 @@ async def admin_update_config(
     return {"code": 0, "message": "配置已保存", "data": None}
 
 
+# ── Traffic Stats ─────────────────────────────────────────────────
+
+@router.get("/stats/traffic")
+async def admin_traffic_stats(
+    current_user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """全站访问统计：今日PV、今日UV(路径去重)、本周趋势"""
+    now = datetime.now(timezone.utc)
+    today = now.date()
+    week_ago = today - timedelta(days=7)
+
+    # 今日总 PV
+    today_pv = (await db.execute(
+        select(func.count()).select_from(
+            text("daily_stats WHERE date = :d")
+        ).params(d=today)
+    )).scalar() or 0
+
+    # 今日独立路径数
+    today_paths = (await db.execute(
+        text("SELECT COUNT(DISTINCT path) FROM daily_stats WHERE date = :d"),
+        {"d": today},
+    )).scalar() or 0
+
+    # 本周每日趋势
+    trend_rows = (await db.execute(
+        text(
+            "SELECT date, COUNT(*)::int AS pv "
+            "FROM daily_stats WHERE date >= :w "
+            "GROUP BY date ORDER BY date"
+        ),
+        {"w": week_ago},
+    )).fetchall()
+
+    trend = [{"date": str(r[0]), "pv": r[1]} for r in trend_rows]
+
+    # TOP 页面
+    top_rows = (await db.execute(
+        text(
+            "SELECT path, COUNT(*)::int AS cnt FROM daily_stats "
+            "WHERE date = :d GROUP BY path ORDER BY cnt DESC LIMIT 8"
+        ),
+        {"d": today},
+    )).fetchall()
+    top_pages = [{"path": r[0], "count": r[1]} for r in top_rows]
+
+    return {
+        "code": 0,
+        "data": {
+            "today_pv": today_pv,
+            "today_paths": today_paths,
+            "trend": trend,
+            "top_pages": top_pages,
+        },
+        "message": "ok",
+    }
+
+
 @router.post("/config/test-search")
 async def admin_test_search(
     current_user: User = Depends(require_admin),

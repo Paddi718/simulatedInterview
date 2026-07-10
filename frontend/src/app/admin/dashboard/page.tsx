@@ -13,6 +13,8 @@ import {
   Activity,
   ArrowRight,
   Clock,
+  Eye,
+  Layers,
 } from 'lucide-react';
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -35,19 +37,22 @@ export default function AdminDashboardPage() {
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [recentUsers, setRecentUsers] = useState<AdminUserItem[]>([]);
   const [recentInterviews, setRecentInterviews] = useState<AdminInterviewItem[]>([]);
+  const [traffic, setTraffic] = useState<{ today_pv: number; today_paths: number; trend: { date: string; pv: number }[]; top_pages: { path: string; count: number }[] } | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
       try {
-        const [s, u, i] = await Promise.all([
+        const [s, u, i, t] = await Promise.all([
           api.get<AdminStats>('/api/admin/stats'),
           api.get<{ items: AdminUserItem[] }>('/api/admin/users?page=1&size=5'),
           api.get<{ items: AdminInterviewItem[] }>('/api/admin/interviews?page=1&size=5'),
+          api.get<any>('/api/admin/stats/traffic'),
         ]);
         setStats(s);
         setRecentUsers(u.items);
         setRecentInterviews(i.items);
+        setTraffic(t);
       } catch (err) {
         console.error('Failed to load admin dashboard:', err);
       } finally {
@@ -74,6 +79,47 @@ export default function AdminDashboardPage() {
         <StatCard title="总面试数" value={stats?.total_interviews ?? '-'} icon={FileText} variant="purple" loading={loading} />
         <StatCard title="7日活跃用户" value={stats?.active_users_7d ?? '-'} icon={Activity} variant="yellow" loading={loading} />
       </div>
+
+      {/* 访问统计 */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <StatCard title="今日访问量(PV)" value={traffic?.today_pv ?? '-'} icon={Eye} variant="purple" loading={loading} />
+        <StatCard title="今日访问页面数" value={traffic?.today_paths ?? '-'} icon={Layers} variant="yellow" loading={loading} />
+      </div>
+
+      {/* 访问趋势 + 热门页面 */}
+      {traffic && traffic.top_pages.length > 0 && (
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <Card>
+          <CardHeader><CardTitle className="text-base">今日热门页面 TOP 5</CardTitle></CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {traffic.top_pages.slice(0, 5).map((p, i) => (
+                <div key={i} className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600 dark:text-gray-400 truncate max-w-[300px]">{p.path}</span>
+                  <span className="text-gray-900 dark:text-gray-200 font-medium ml-2 shrink-0">{p.count} 次</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader><CardTitle className="text-base">本周访问趋势</CardTitle></CardHeader>
+          <CardContent>
+            <div className="space-y-1.5">
+              {traffic.trend.map((t, i) => (
+                <div key={i} className="flex items-center gap-2 text-sm">
+                  <span className="text-gray-400 w-16 shrink-0">{t.date.slice(5)}</span>
+                  <div className="flex-1 h-5 bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden">
+                    <div className="h-full bg-brand-400 rounded-full transition-all" style={{width: `${Math.min(100, (t.pv / Math.max(...traffic.trend.map(x=>x.pv), 1)) * 100)}%`}} />
+                  </div>
+                  <span className="text-gray-600 dark:text-gray-300 font-medium w-8 text-right shrink-0">{t.pv}</span>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
