@@ -12,6 +12,7 @@ import {
   Shield,
   ChevronLeft,
   Menu,
+  Eye,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuthStore } from '@/store/authStore';
@@ -21,6 +22,7 @@ const adminNavItems = [
   { label: '管理仪表盘', href: '/admin/dashboard', icon: LayoutDashboard },
   { label: '用户管理', href: '/admin/users', icon: Users },
   { label: '面试管理', href: '/admin/interviews', icon: FileText },
+  { label: '访问记录', href: '/admin/visits', icon: Eye },
   { label: '系统配置', href: '/admin/settings', icon: Settings },
 ];
 

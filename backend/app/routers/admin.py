@@ -360,6 +360,26 @@ async def admin_update_config(
 
 # ── Traffic Stats ─────────────────────────────────────────────────
 
+@router.get("/stats/visits")
+async def admin_visit_logs(
+    page: int = Query(1, ge=1),
+    size: int = Query(30, ge=1, le=100),
+    current_user: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """访问日志：IP、国家/城市、页面、时间（最新在前）"""
+    total = (await db.execute(
+        text("SELECT COUNT(*) FROM visit_logs")
+    )).scalar() or 0
+    rows = (await db.execute(
+        text("SELECT ip, country, city, path, created_at FROM visit_logs ORDER BY created_at DESC LIMIT :l OFFSET :o"),
+        {"l": size, "o": (page - 1) * size},
+    )).fetchall()
+    items = [{"ip": r[0], "country": r[1] or "-", "city": r[2] or "-", "path": r[3], "time": str(r[4])} for r in rows]
+    total_pages = max(1, math.ceil(total / size))
+    return {"code": 0, "data": {"items": items, "total": total, "page": page, "total_pages": total_pages}, "message": "ok"}
+
+
 @router.get("/stats/traffic")
 async def admin_traffic_stats(
     current_user: User = Depends(require_admin),

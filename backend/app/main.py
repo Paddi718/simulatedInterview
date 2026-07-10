@@ -76,10 +76,34 @@ app.add_middleware(
 
 # ---------- 全站访问统计 ----------
 _traffic_buffer: dict = {}  # f"{date}|{path}" → count
+_visit_buffer: list = []   # [{ip, path, user_agent, user_id}, ...]
 _traffic_lock = _asyncio.Lock()
+_geo_cache: dict = {}       # ip → {country, city}
 
 _SKIP_PREFIXES = ("/api/health", "/api/ws/", "/api/cache/", "/_next/", "/favicon")
 _SKIP_SUFFIXES = (".js", ".css", ".json", ".svg", ".ico", ".png", ".map", ".woff", ".woff2")
+
+
+async def _geo_lookup(ip: str) -> tuple[str | None, str | None]:
+    """查 IP 地理位置（本地/内网 IP 跳过）"""
+    if ip in ("unknown", "127.0.0.1", "localhost") or ip.startswith(("172.", "192.168.", "10.")):
+        return None, None
+    if ip in _geo_cache:
+        return _geo_cache[ip]
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=3.0) as c:
+            r = await c.get(f"http://ip-api.com/json/{ip}?lang=zh-CN&fields=country,city")
+            if r.status_code == 200:
+                d = r.json()
+                country = d.get("country") or None
+                city = d.get("city") or None
+                _geo_cache[ip] = (country, city)
+                return country, city
+    except Exception:
+        pass
+    _geo_cache[ip] = (None, None)
+    return None, None
 
 
 async def _flush_traffic():
@@ -87,17 +111,21 @@ async def _flush_traffic():
     while True:
         await _asyncio.sleep(60)
         async with _traffic_lock:
-            if not _traffic_buffer:
-                continue
-            batch = _traffic_buffer.copy()
+            has_traffic = bool(_traffic_buffer)
+            has_visits = bool(_visit_buffer)
+            traffic_batch = _traffic_buffer.copy()
             _traffic_buffer.clear()
+            visit_batch = _visit_buffer.copy()
+            _visit_buffer.clear()
+        if not has_traffic and not has_visits:
+            continue
         try:
             from datetime import date as _date
             from sqlalchemy import text
             from app.database import async_session_factory
             today = _date.today()
             async with async_session_factory() as db:
-                for key, count in batch.items():
+                for key, count in traffic_batch.items():
                     parts = key.split("|", 2)
                     if len(parts) != 2:
                         continue
@@ -107,6 +135,22 @@ async def _flush_traffic():
                             text("INSERT INTO daily_stats (date, path, count) VALUES (:d, :p, 1)"),
                             {"d": today, "p": path},
                         )
+                for v in visit_batch:
+                    country, city = await _geo_lookup(v["ip"])
+                    await db.execute(
+                        text(
+                            "INSERT INTO visit_logs (ip, country, city, path, user_agent, user_id) "
+                            "VALUES (:ip, :cc, :ct, :p, :ua, :uid)"
+                        ),
+                        {
+                            "ip": v["ip"],
+                            "cc": country,
+                            "ct": city,
+                            "p": v["path"],
+                            "ua": v.get("user_agent", ""),
+                            "uid": v.get("user_id"),
+                        },
+                    )
                 await db.commit()
         except Exception:
             pass
@@ -120,12 +164,15 @@ async def start_traffic_flusher():
 @app.middleware("http")
 async def traffic_middleware(request: Request, call_next):
     response = await call_next(request)
-    if response.status_code < 400:  # 只统计成功请求
+    if response.status_code < 400:
         path = request.url.path
         if not path.startswith(tuple(_SKIP_PREFIXES)) and not path.endswith(tuple(_SKIP_SUFFIXES)):
             key = f"_|{path}"
+            client_ip = request.client.host if request.client else "unknown"
+            ua = request.headers.get("user-agent", "")[:500]
             async with _traffic_lock:
                 _traffic_buffer[key] = _traffic_buffer.get(key, 0) + 1
+                _visit_buffer.append({"ip": client_ip, "path": path, "user_agent": ua, "user_id": None})
     return response
 
 
