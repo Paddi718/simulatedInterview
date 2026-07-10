@@ -58,7 +58,7 @@ export default function AdminVisitsPage() {
                     {v.country !== '-' ? `${v.country} ${v.city}` : '-'}
                   </td>
                   <td className="py-2.5 px-5 text-xs text-gray-500 dark:text-gray-500 max-w-[300px] truncate">{v.path}</td>
-                  <td className="py-2.5 px-5 text-right text-xs text-gray-400">{v.time.slice(5, 19).replace('T', ' ')}</td>
+                  <td className="py-2.5 px-5 text-right text-xs text-gray-400">{v.time.slice(5, 16).replace('T', ' ')}</td>
                 </tr>
               ))}
             </tbody>
