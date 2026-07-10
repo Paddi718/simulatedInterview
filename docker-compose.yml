@@ -67,6 +67,7 @@ services:
     volumes:
       - app_data:/var/data/interview-app
       - ./models:/app/models
+      - /var/log/nginx:/var/log/nginx:ro
     networks:
       - interview-net
     depends_on:
